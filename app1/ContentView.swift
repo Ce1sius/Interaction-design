@@ -8,17 +8,22 @@
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var store = PathMateStore()
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            if store.hasCompletedOnboarding {
+                MainTabView(store: store)
+            } else {
+                OnboardingFlow(store: store)
+            }
         }
-        .padding()
+        .preferredColorScheme(store.profile.appearanceMode.colorScheme)
     }
 }
 
-#Preview {
-    ContentView()
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        ContentView()
+    }
 }
