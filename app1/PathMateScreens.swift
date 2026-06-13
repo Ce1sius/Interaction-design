@@ -1039,7 +1039,7 @@ struct AcademicsView: View {
     @State private var addingCourse = false
     @State private var editingCourse: Course?
     @State private var schedulingTodoCourse: Course?
-    @State private var studyAidCourseID: UUID?
+    @State private var selectedStudyAidCourseID: UUID?
     @State private var showingImportCenter = false
     @State private var addSingleCourseAfterImport = false
     @State private var toast: String?
@@ -1058,7 +1058,7 @@ struct AcademicsView: View {
                                     CourseDetailView(store: store, courseID: course.id, highlightHomeworkID: nil)
                                 } label: {
                                     CourseCard(course: course) {
-                                        studyAidCourseID = course.id
+                                        selectedStudyAidCourseID = course.id
                                     }
                                 }
                                 .buttonStyle(.plain)
@@ -1117,8 +1117,12 @@ struct AcademicsView: View {
                     toast = "课程待办已加入日历"
                 }
             }
-            .navigationDestination(item: $studyAidCourseID) { courseID in
-                CourseStudyAidPage(store: store, courseID: courseID)
+            .navigationDestination(item: $selectedStudyAidCourseID) { courseID in
+                if let course = store.course(id: courseID) {
+                    AlgorithmMindMapScreen(course: course)
+                } else {
+                    EmptyStateView(systemImage: "graduationcap", title: "课程不存在", message: "无法打开该课程的图谱辅学。")
+                }
             }
             .sheet(isPresented: $showingImportCenter, onDismiss: {
                 if addSingleCourseAfterImport {
@@ -1856,7 +1860,7 @@ struct CourseDetailView: View {
     @State private var summaryExpanded = false
     @State private var editingCourse: Course?
     @State private var schedulingTodoCourse: Course?
-    @State private var studyAidCourseID: UUID?
+    @State private var selectedStudyAidCourseID: UUID?
     @State private var highlight = false
     @State private var isAddingTag = false
     @State private var newTagText = ""
@@ -1868,7 +1872,7 @@ struct CourseDetailView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
                         CourseCard(course: course) {
-                            studyAidCourseID = course.id
+                            selectedStudyAidCourseID = course.id
                         }
                         noteCard(course)
                         summaryCard(course)
@@ -1919,8 +1923,12 @@ struct CourseDetailView: View {
                 } message: {
                     Text("标签会显示在课程标签栏中。")
                 }
-                .navigationDestination(item: $studyAidCourseID) { courseID in
-                    CourseStudyAidPage(store: store, courseID: courseID)
+                .navigationDestination(item: $selectedStudyAidCourseID) { courseID in
+                    if let course = store.course(id: courseID) {
+                        AlgorithmMindMapScreen(course: course)
+                    } else {
+                        EmptyStateView(systemImage: "graduationcap", title: "课程不存在", message: "无法打开该课程的图谱辅学。")
+                    }
                 }
                 .toast($toast)
                 .onChange(of: newTagText) { _, value in
@@ -2069,7 +2077,7 @@ struct CourseDetailView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 130), spacing: 10)], spacing: 10) {
                 ForEach(course.studyTopics) { topic in
                     NavigationLink {
-                        StudyAidView(course: course, topic: topic)
+                        AlgorithmMindMapScreen(course: course, initialTopicTitle: topic.title)
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
                             Image(systemName: "arrow.up.forward.circle.fill")
@@ -2117,12 +2125,15 @@ struct CourseMaterialsView: View {
     @ObservedObject var store: PathMateStore
     var courseID: UUID
     @State private var toast: String?
+    @State private var isSyncingMaterials = false
+    @State private var downloadingMaterialID: UUID?
 
     var body: some View {
         Group {
             if let course = store.course(id: courseID) {
                 ScrollView {
                     VStack(spacing: 12) {
+                        syncMaterialsCard(course)
                         ForEach(course.materials) { material in
                             VStack(alignment: .leading, spacing: 10) {
                                 HStack {
@@ -2145,12 +2156,19 @@ struct CourseMaterialsView: View {
                                         toast = "已打开「\(material.title)」预览"
                                     }
                                     .buttonStyle(.bordered)
-                                    Button("下载") {
-                                        store.markMaterialDownloaded(courseID: course.id, materialID: material.id)
-                                        toast = "已模拟下载课件"
+                                    Button {
+                                        download(material, for: course)
+                                    } label: {
+                                        if downloadingMaterialID == material.id {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        } else {
+                                            Text(material.remoteID == nil ? "标记下载" : "下载")
+                                        }
                                     }
                                     .buttonStyle(.borderedProminent)
                                     .tint(PMColor.primary)
+                                    .disabled(downloadingMaterialID != nil)
                                 }
                                 .font(.system(size: 13, weight: .semibold))
                             }
@@ -2162,6 +2180,21 @@ struct CourseMaterialsView: View {
                 }
                 .background(PMColor.softCanvas)
                 .navigationTitle("课件")
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            syncMaterials(for: course)
+                        } label: {
+                            if isSyncingMaterials {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "arrow.triangle.2.circlepath")
+                            }
+                        }
+                        .disabled(isSyncingMaterials)
+                        .accessibilityLabel("同步学在浙大课件")
+                    }
+                }
                 .toast($toast)
             } else {
                 EmptyStateView(systemImage: "folder", title: "课程不存在", message: "无法查看课件。")
@@ -2169,383 +2202,70 @@ struct CourseMaterialsView: View {
             }
         }
     }
-}
 
-private enum CourseAidSource: String, CaseIterable, Identifiable {
-    case courseware = "课件"
-    case replay = "回放"
-
-    var id: String { rawValue }
-
-    var mediaTitle: String {
-        switch self {
-        case .courseware: return "课件"
-        case .replay: return "视频回放"
-        }
-    }
-}
-
-private struct StudyMapTopic: Identifiable, Equatable {
-    var id: String
-    var title: String
-    var explanation: String
-    var example: String
-    var recommendation: String
-}
-
-struct CourseStudyAidPage: View {
-    @ObservedObject var store: PathMateStore
-    var courseID: UUID
-
-    @State private var selectedSource: CourseAidSource = .courseware
-    @State private var focusedTitle: String?
-    @State private var confirmedTitle: String?
-    @State private var isConfirmed = false
-
-    private let panelColor = Color(hex: "#d9d9d9")
-    private let mediaColor = Color(hex: "#3a2f31")
-
-    var body: some View {
-        Group {
-            if let course = store.course(id: courseID) {
-                ScrollView {
-                    VStack(spacing: 18) {
-                        sourcePanel(course)
-                        mindMapPanel(course)
-                        if isConfirmed {
-                            learningContent(course)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 18)
-                }
-                .background(Color.white)
-                .navigationTitle("辅学")
-                .navigationBarTitleDisplayMode(.inline)
-            } else {
-                EmptyStateView(systemImage: "graduationcap", title: "课程不存在", message: "无法打开辅学内容。")
-                    .padding()
-                    .background(PMColor.softCanvas)
-            }
-        }
-    }
-
-    private func sourcePanel(_ course: Course) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 18) {
-                ForEach(CourseAidSource.allCases) { source in
-                    Button {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                            selectedSource = source
-                            isConfirmed = false
-                            confirmedTitle = nil
-                            focusedTitle = nil
-                        }
-                    } label: {
-                        Text(source.rawValue)
-                            .font(.system(size: 20, weight: selectedSource == source ? .bold : .semibold))
-                            .foregroundStyle(selectedSource == source ? Color.black : Color.gray)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            Text("课程章节（包含哪些知识点）")
-                .font(.system(size: 21, weight: .bold))
-                .foregroundStyle(Color.black)
-                .padding(.leading, 22)
-
-            ZStack {
-                mediaColor
-                Text(selectedSource.mediaTitle)
-                    .font(.system(size: 23, weight: .semibold))
-                    .foregroundStyle(.white)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 150)
-        }
-        .padding(22)
-        .background(panelColor)
-    }
-
-    private func mindMapPanel(_ course: Course) -> some View {
-        VStack(spacing: 16) {
-            if isConfirmed {
-                collapsedMap(course)
-            } else {
-                StudyMindMapCanvas(
-                    centerTitle: centerTitle(for: course),
-                    branches: branchTitles(for: course),
-                    onSelect: { title in
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
-                            focusedTitle = title
-                        }
-                    }
-                )
-                .frame(height: 410)
-
-                Button {
-                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                        confirmedTitle = centerTitle(for: course)
-                        isConfirmed = true
-                    }
-                } label: {
-                    Text("确定")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 46)
-                        .background(Color.black)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity)
-        .background(panelColor)
-    }
-
-    private func collapsedMap(_ course: Course) -> some View {
-        HStack(spacing: 12) {
-            Text(confirmedTitle ?? centerTitle(for: course))
-                .font(.system(size: 16, weight: .bold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
-                .padding(.horizontal, 18)
-                .frame(height: 46)
-                .background(mediaColor)
-            ForEach(branchTitles(for: course).prefix(2), id: \.self) { title in
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.black.opacity(0.72))
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .frame(height: 34)
-                    .background(Color.white.opacity(0.55))
-            }
-            Spacer(minLength: 0)
-            Text("已确定")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Color.black.opacity(0.75))
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    private func learningContent(_ course: Course) -> some View {
-        let topic = selectedTopic(in: course)
-        return VStack(alignment: .leading, spacing: 18) {
-            Text(confirmedTitle ?? topic.title)
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(Color.black)
-
-            contentBlock(title: "知识点学习", text: topic.explanation)
-            contentBlock(title: "典型例子", text: topic.example)
-            contentBlock(title: "相关知识点", text: branchTitles(for: course).prefix(4).joined(separator: "、"))
-            contentBlock(title: "学习建议", text: topic.recommendation)
-        }
-        .padding(22)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(panelColor)
-    }
-
-    private func contentBlock(title: String, text: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.system(size: 19, weight: .bold))
-                .foregroundStyle(Color.black)
-            Text(text.isEmpty ? "围绕该知识点补充学习内容。" : text)
-                .font(.system(size: 16))
-                .foregroundStyle(Color.black.opacity(0.78))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func topics(for course: Course) -> [StudyMapTopic] {
-        if !course.studyTopics.isEmpty {
-            return course.studyTopics.map {
-                StudyMapTopic(id: $0.id.uuidString, title: $0.title, explanation: $0.explanation, example: $0.example, recommendation: $0.recommendation)
-            }
-        }
-        return course.keyPoints.enumerated().map { index, title in
-            StudyMapTopic(
-                id: "\(index)-\(title)",
-                title: title,
-                explanation: "\(title) 是 \(course.name) 中需要优先理解的核心知识点。",
-                example: "结合课程章节和课堂例题，先识别 \(title) 出现的典型情境。",
-                recommendation: "先画出概念关系，再完成一道对应练习。"
-            )
-        }
-    }
-
-    private func centerTitle(for course: Course) -> String {
-        focusedTitle ?? "\(course.name)核心内容"
-    }
-
-    private func branchTitles(for course: Course) -> [String] {
-        let allTopics = topics(for: course).map(\.title)
-        guard let focusedTitle else {
-            return Array(allTopics.prefix(5))
-        }
-
-        let generated = ["概念解释", "典型例子", "应用场景", "常见误区", "复习路径"].map { "\(focusedTitle)·\($0)" }
-        let related = allTopics.filter { $0 != focusedTitle }
-        return Array((generated + related).prefix(5))
-    }
-
-    private func selectedTopic(in course: Course) -> StudyMapTopic {
-        let title = confirmedTitle ?? focusedTitle
-        if let title, let topic = topics(for: course).first(where: { $0.title == title }) {
-            return topic
-        }
-        return StudyMapTopic(
-            id: "generated",
-            title: title ?? "\(course.name)核心内容",
-            explanation: "围绕 \(title ?? course.name) 展开学习，先建立中心概念，再向相关知识点扩展。",
-            example: "把课件或回放中的关键片段作为例子，对照章节中的概念关系进行理解。",
-            recommendation: "完成这一块后，再回到思维导图选择下一个分支继续学习。"
-        )
-    }
-}
-
-struct StudyMindMapCanvas: View {
-    var centerTitle: String
-    var branches: [String]
-    var onSelect: (String) -> Void
-
-    private let nodeColor = Color(hex: "#3a2f31")
-
-    var body: some View {
-        GeometryReader { proxy in
-            let size = proxy.size
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let positions = branchPositions(in: size)
-
-            ZStack {
-                Path { path in
-                    for point in positions.prefix(branches.count) {
-                        path.move(to: center)
-                        path.addLine(to: point)
-                    }
-                }
-                .stroke(Color.black.opacity(0.26), lineWidth: 2)
-
-                ForEach(Array(branches.enumerated()), id: \.offset) { index, title in
-                    Button {
-                        onSelect(title)
-                    } label: {
-                        mapNode(title: title, isCenter: false)
-                    }
-                    .buttonStyle(.plain)
-                    .position(positions[index])
-                }
-
-                mapNode(title: centerTitle, isCenter: true)
-                    .position(center)
-            }
-            .frame(width: size.width, height: size.height)
-        }
-    }
-
-    private func mapNode(title: String, isCenter: Bool) -> some View {
-        Text(title)
-            .font(.system(size: isCenter ? 16 : 12, weight: isCenter ? .bold : .semibold))
-            .foregroundStyle(isCenter ? .white : Color.black)
-            .multilineTextAlignment(.center)
-            .lineLimit(2)
-            .minimumScaleFactor(0.72)
-            .padding(.horizontal, isCenter ? 16 : 10)
-            .frame(width: isCenter ? 138 : 104, height: isCenter ? 62 : 48)
-            .background(isCenter ? nodeColor : Color.white.opacity(0.72))
-    }
-
-    private func branchPositions(in size: CGSize) -> [CGPoint] {
-        [
-            CGPoint(x: size.width * 0.22, y: size.height * 0.22),
-            CGPoint(x: size.width * 0.78, y: size.height * 0.22),
-            CGPoint(x: size.width * 0.18, y: size.height * 0.67),
-            CGPoint(x: size.width * 0.82, y: size.height * 0.67),
-            CGPoint(x: size.width * 0.5, y: size.height * 0.84)
-        ]
-    }
-}
-
-struct TopicAidCard: View {
-    var topic: StudyAidTopic
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "lightbulb.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(PMColor.warning)
-                    .frame(width: 34, height: 34)
-                    .background(PMColor.warning.opacity(0.13))
-                    .clipShape(Circle())
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(topic.title)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(PMColor.charcoal)
-                    Text(topic.explanation)
-                        .font(.system(size: 14))
-                        .foregroundStyle(PMColor.slate)
-                        .lineLimit(2)
-                }
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right")
-                    .foregroundStyle(PMColor.muted)
-                    .padding(.top, 8)
-            }
-            HStack(spacing: 8) {
-                TagChip(title: "例子", systemImage: "pencil.and.outline", tint: PMColor.primary)
-                TagChip(title: "复习建议", systemImage: "sparkles", tint: PMColor.success)
-            }
-        }
-        .padding(16)
-        .pathCardStyle()
-    }
-}
-
-struct StudyAidView: View {
-    var course: Course
-    var topic: StudyAidTopic
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text(topic.title)
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundStyle(PMColor.ink)
-                    Text(course.name)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(PMColor.primary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .pathCardStyle()
-                aidCard(title: "概念解释", icon: "lightbulb.fill", text: topic.explanation)
-                aidCard(title: "典型例子", icon: "pencil.and.outline", text: topic.example)
-                aidCard(title: "复习建议", icon: "sparkles", text: topic.recommendation)
-                aidCard(title: "推荐资源", icon: "play.rectangle.fill", text: "公开视频 / 实验演示 / 可视化材料：原型中以模拟资源呈现，后续可接入真实课程平台或公开视频搜索。")
-            }
-            .padding(16)
-        }
-        .background(PMColor.softCanvas)
-        .navigationTitle("辅学")
-    }
-
-    private func aidCard(title: String, icon: String, text: String) -> some View {
+    private func syncMaterialsCard(_ course: Course) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: icon)
+            Label("学在浙大课件", systemImage: "icloud.and.arrow.down.fill")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(PMColor.charcoal)
-            Text(text)
-                .font(.system(size: 15))
+            Text("登录浙江大学统一身份认证后，可按课程名称匹配学在浙大课程，并导入课堂活动与作业附件中的课件。")
+                .font(.system(size: 13))
                 .foregroundStyle(PMColor.slate)
+            HStack {
+                TagChip(title: course.materials.filter { $0.remoteID != nil }.isEmpty ? "未同步" : "已接入", systemImage: nil, tint: PMColor.primary)
+                Spacer()
+                Button {
+                    syncMaterials(for: course)
+                } label: {
+                    Label(isSyncingMaterials ? "同步中..." : "同步课件", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(PMColor.primary)
+                .disabled(isSyncingMaterials)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .pathCardStyle()
+    }
+
+    private func syncMaterials(for course: Course) {
+        guard !isSyncingMaterials else { return }
+        isSyncingMaterials = true
+        Task {
+            do {
+                let materials = try await ZJULearningMaterialService.materials(for: course)
+                let insertedCount = store.mergeMaterials(materials, into: course.id)
+                isSyncingMaterials = false
+                toast = insertedCount == 0
+                    ? "学在浙大课件已是最新"
+                    : "已导入 \(insertedCount) 个学在浙大课件"
+            } catch {
+                isSyncingMaterials = false
+                toast = error.localizedDescription
+            }
+        }
+    }
+
+    private func download(_ material: CourseMaterial, for course: Course) {
+        guard downloadingMaterialID == nil else { return }
+        guard material.remoteID != nil else {
+            store.markMaterialDownloaded(courseID: course.id, materialID: material.id)
+            toast = "已标记「\(material.title)」为已下载"
+            return
+        }
+
+        downloadingMaterialID = material.id
+        Task {
+            do {
+                let fileURL = try await ZJULearningMaterialService.download(material)
+                store.markMaterialDownloaded(courseID: course.id, materialID: material.id)
+                downloadingMaterialID = nil
+                toast = "已下载到 \(fileURL.lastPathComponent)"
+            } catch {
+                downloadingMaterialID = nil
+                toast = error.localizedDescription
+            }
+        }
     }
 }
 

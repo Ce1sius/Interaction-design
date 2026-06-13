@@ -201,3 +201,395 @@ enum ZJUTimetableImportService {
         value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value
     }
 }
+
+enum ZJULearningMaterialImportError: LocalizedError {
+    case notAuthenticated
+    case sessionExpired
+    case noMatchingCourse(String)
+    case noMaterials(String)
+    case malformedResponse
+    case downloadUnavailable
+    case requestFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .notAuthenticated:
+            return "尚未取得学在浙大会话。请先在浙江大学统一身份认证页面登录，再同步课件。"
+        case .sessionExpired:
+            return "学在浙大会话已过期，请重新登录后再同步课件。"
+        case let .noMatchingCourse(courseName):
+            return "学在浙大中没有匹配到「\(courseName)」。请确认课程名称与学在浙大一致。"
+        case let .noMaterials(courseName):
+            return "「\(courseName)」暂未读取到可导入课件。"
+        case .malformedResponse:
+            return "无法解析学在浙大返回的课件数据。"
+        case .downloadUnavailable:
+            return "该课件缺少学在浙大下载标识，无法直接下载。"
+        case let .requestFailed(message):
+            return "学在浙大请求失败：\(message)"
+        }
+    }
+}
+
+struct ZJULearningRemoteCourse: Identifiable, Equatable {
+    var id: Int64
+    var name: String
+    var semesterID: Int64
+    var academicYearID: Int64
+}
+
+enum ZJULearningMaterialService {
+    private static let baseURL = URL(string: "https://courses.zju.edu.cn")!
+    private static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"
+
+    static func materials(for course: Course) async throws -> [CourseMaterial] {
+        let cookies = await authenticationCookies()
+        guard containsLearningCookie(cookies) || containsCASCookie(cookies) else {
+            throw ZJULearningMaterialImportError.notAuthenticated
+        }
+
+        let session = makeSession(cookies: cookies)
+        try await warmLearningSession(session: session)
+        let remoteCourses = try await remoteCourses(session: session)
+        guard let remoteCourse = bestMatch(for: course, in: remoteCourses) else {
+            throw ZJULearningMaterialImportError.noMatchingCourse(course.name)
+        }
+
+        let uploads = try await uploads(courseID: remoteCourse.id, courseName: remoteCourse.name, session: session)
+        guard !uploads.isEmpty else {
+            throw ZJULearningMaterialImportError.noMaterials(course.name)
+        }
+        return uploads
+    }
+
+    static func download(_ material: CourseMaterial) async throws -> URL {
+        guard let remoteID = material.remoteID,
+              let remoteReferenceID = material.remoteReferenceID else {
+            throw ZJULearningMaterialImportError.downloadUnavailable
+        }
+        let cookies = await authenticationCookies()
+        guard containsLearningCookie(cookies) || containsCASCookie(cookies) else {
+            throw ZJULearningMaterialImportError.notAuthenticated
+        }
+
+        let session = makeSession(cookies: cookies)
+        try await warmLearningSession(session: session)
+        let data = try await downloadData(remoteID: remoteID, referenceID: remoteReferenceID, session: session)
+        let directory = try materialsDirectory(for: material.remoteCourseName ?? "LearningMaterials")
+        let fileName = sanitizedFileName(material.localFileName ?? material.title)
+        let fileURL = directory.appendingPathComponent(fileName)
+        try data.write(to: fileURL, options: [.atomic])
+        return fileURL
+    }
+
+    private static func authenticationCookies() async -> [HTTPCookie] {
+        await withCheckedContinuation { continuation in
+            WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
+                continuation.resume(returning: cookies.filter {
+                    $0.domain.contains("zju.edu.cn")
+                })
+            }
+        }
+    }
+
+    private static func containsLearningCookie(_ cookies: [HTTPCookie]) -> Bool {
+        cookies.contains { $0.domain.contains("courses.zju.edu.cn") || $0.domain == ".zju.edu.cn" }
+    }
+
+    private static func containsCASCookie(_ cookies: [HTTPCookie]) -> Bool {
+        cookies.contains { $0.domain.contains("zjuam.zju.edu.cn") || $0.name.uppercased().contains("CASTGC") }
+    }
+
+    private static func makeSession(cookies: [HTTPCookie]) -> URLSession {
+        let storage = HTTPCookieStorage()
+        cookies.forEach { storage.setCookie($0) }
+        let configuration = URLSessionConfiguration.default
+        configuration.httpCookieStorage = storage
+        configuration.httpCookieAcceptPolicy = .always
+        configuration.httpShouldSetCookies = true
+        configuration.timeoutIntervalForRequest = 18
+        configuration.timeoutIntervalForResource = 60
+        return URLSession(configuration: configuration)
+    }
+
+    private static func warmLearningSession(session: URLSession) async throws {
+        var request = URLRequest(url: baseURL.appendingPathComponent("user/courses"))
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        do {
+            let (_, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw ZJULearningMaterialImportError.malformedResponse
+            }
+            guard (200..<400).contains(httpResponse.statusCode) else {
+                throw ZJULearningMaterialImportError.requestFailed("HTTP \(httpResponse.statusCode)")
+            }
+        } catch let error as ZJULearningMaterialImportError {
+            throw error
+        } catch {
+            throw ZJULearningMaterialImportError.requestFailed(error.localizedDescription)
+        }
+    }
+
+    private static func remoteCourses(session: URLSession) async throws -> [ZJULearningRemoteCourse] {
+        var page = 1
+        var pages = 1
+        var results: [ZJULearningRemoteCourse] = []
+
+        repeat {
+            let json = try await jsonObject(url: myCoursesURL(page: page), session: session)
+            guard let courses = json["courses"] as? [[String: Any]] else {
+                if looksLikeLoginPage(json) {
+                    throw ZJULearningMaterialImportError.sessionExpired
+                }
+                throw ZJULearningMaterialImportError.malformedResponse
+            }
+            pages = int(json["pages"]) ?? pages
+            results.append(contentsOf: courses.compactMap(remoteCourse(from:)))
+            page += 1
+        } while page <= pages
+
+        return results
+    }
+
+    private static func uploads(courseID: Int64, courseName: String, session: URLSession) async throws -> [CourseMaterial] {
+        async let activities = activityUploads(courseID: courseID, courseName: courseName, session: session)
+        async let homeworks = homeworkUploads(courseID: courseID, courseName: courseName, session: session)
+        let merged = try await activities + homeworks
+        return Dictionary(grouping: merged) { material in
+            material.remoteReferenceID.map(String.init) ?? material.title
+        }
+        .compactMap(\.value.first)
+        .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
+    }
+
+    private static func activityUploads(courseID: Int64, courseName: String, session: URLSession) async throws -> [CourseMaterial] {
+        let url = baseURL.appendingPathComponent("api/courses/\(courseID)/activities")
+        let json = try await jsonObject(url: url, session: session)
+        guard let activities = json["activities"] as? [[String: Any]] else {
+            throw ZJULearningMaterialImportError.malformedResponse
+        }
+        return activities.flatMap { activity in
+            (activity["uploads"] as? [[String: Any]] ?? []).compactMap {
+                material(from: $0, courseID: courseID, courseName: courseName, source: "课堂活动")
+            }
+        }
+    }
+
+    private static func homeworkUploads(courseID: Int64, courseName: String, session: URLSession) async throws -> [CourseMaterial] {
+        var page = 1
+        var pages = 1
+        var results: [CourseMaterial] = []
+
+        repeat {
+            let json = try await jsonObject(url: homeworkURL(courseID: courseID, page: page), session: session)
+            guard let activities = json["homework_activities"] as? [[String: Any]] else {
+                throw ZJULearningMaterialImportError.malformedResponse
+            }
+            pages = int(json["pages"]) ?? pages
+            results.append(contentsOf: activities.flatMap { activity in
+                (activity["uploads"] as? [[String: Any]] ?? []).compactMap {
+                    material(from: $0, courseID: courseID, courseName: courseName, source: "作业附件")
+                }
+            })
+            page += 1
+        } while page <= pages
+
+        return results
+    }
+
+    private static func downloadData(remoteID: Int64, referenceID: Int64, session: URLSession) async throws -> Data {
+        if let data = try await dataIfAvailable(url: baseURL.appendingPathComponent("api/uploads/reference/\(referenceID)/blob"), session: session) {
+            return data
+        }
+        if let data = try await dataIfAvailable(url: baseURL.appendingPathComponent("api/uploads/\(remoteID)/blob"), session: session) {
+            return data
+        }
+        throw ZJULearningMaterialImportError.downloadUnavailable
+    }
+
+    private static func dataIfAvailable(url: URL, session: URLSession) async throws -> Data? {
+        var request = URLRequest(url: url)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw ZJULearningMaterialImportError.malformedResponse
+            }
+            if (200..<300).contains(httpResponse.statusCode) {
+                return data
+            }
+            if (300..<400).contains(httpResponse.statusCode) || httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                return nil
+            }
+            throw ZJULearningMaterialImportError.requestFailed("HTTP \(httpResponse.statusCode)")
+        } catch let error as ZJULearningMaterialImportError {
+            throw error
+        } catch {
+            throw ZJULearningMaterialImportError.requestFailed(error.localizedDescription)
+        }
+    }
+
+    private static func jsonObject(url: URL, session: URLSession) async throws -> [String: Any] {
+        var request = URLRequest(url: url)
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                throw ZJULearningMaterialImportError.malformedResponse
+            }
+            guard (200..<300).contains(httpResponse.statusCode) else {
+                if (300..<400).contains(httpResponse.statusCode) || httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                    throw ZJULearningMaterialImportError.sessionExpired
+                }
+                throw ZJULearningMaterialImportError.requestFailed("HTTP \(httpResponse.statusCode)")
+            }
+            if let text = String(data: data, encoding: .utf8),
+               text.contains("统一身份认证") || text.contains("cas/login") {
+                throw ZJULearningMaterialImportError.sessionExpired
+            }
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                throw ZJULearningMaterialImportError.malformedResponse
+            }
+            return json
+        } catch let error as ZJULearningMaterialImportError {
+            throw error
+        } catch {
+            throw ZJULearningMaterialImportError.requestFailed(error.localizedDescription)
+        }
+    }
+
+    private static func myCoursesURL(page: Int) -> URL {
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/my-courses"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "conditions", value: #"{"status":["ongoing","notStarted"],"keyword":"","classify_type":"recently_started","display_studio_list":false}"#),
+            URLQueryItem(name: "fields", value: "id,name,academic_year_id,semester_id"),
+            URLQueryItem(name: "page", value: "\(page)"),
+            URLQueryItem(name: "page_size", value: "100"),
+            URLQueryItem(name: "showScorePassedStatus", value: "false")
+        ]
+        return components.url!
+    }
+
+    private static func homeworkURL(courseID: Int64, page: Int) -> URL {
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/courses/\(courseID)/homework-activities"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [
+            URLQueryItem(name: "conditions", value: #"{"itemsSortBy":{"predicate":"module","reverse":false}}"#),
+            URLQueryItem(name: "page", value: "\(page)"),
+            URLQueryItem(name: "page_size", value: "20"),
+            URLQueryItem(name: "reloadPage", value: "false")
+        ]
+        return components.url!
+    }
+
+    private static func remoteCourse(from json: [String: Any]) -> ZJULearningRemoteCourse? {
+        guard let id = int64(json["id"]),
+              let name = string(json["name"]),
+              !name.isEmpty else {
+            return nil
+        }
+        return ZJULearningRemoteCourse(
+            id: id,
+            name: name,
+            semesterID: int64(json["semester_id"]) ?? 0,
+            academicYearID: int64(json["academic_year_id"]) ?? 0
+        )
+    }
+
+    private static func material(from json: [String: Any], courseID: Int64, courseName: String, source: String) -> CourseMaterial? {
+        guard let id = int64(json["id"]),
+              let referenceID = int64(json["reference_id"]),
+              let fileName = string(json["name"]),
+              !fileName.isEmpty else {
+            return nil
+        }
+        let size = int64(json["size"])
+        return CourseMaterial(
+            id: UUID(),
+            title: fileName,
+            type: fileType(for: fileName),
+            dateText: "学在浙大",
+            summary: "\(source) · \(byteCountText(size))",
+            isDownloaded: false,
+            remoteID: id,
+            remoteReferenceID: referenceID,
+            remoteCourseID: courseID,
+            remoteCourseName: courseName,
+            remoteSize: size,
+            localFileName: fileName
+        )
+    }
+
+    private static func bestMatch(for course: Course, in remoteCourses: [ZJULearningRemoteCourse]) -> ZJULearningRemoteCourse? {
+        let localName = normalizedCourseName(course.name)
+        if let exact = remoteCourses.first(where: { normalizedCourseName($0.name) == localName }) {
+            return exact
+        }
+        return remoteCourses.first {
+            let remoteName = normalizedCourseName($0.name)
+            return remoteName.contains(localName) || localName.contains(remoteName)
+        }
+    }
+
+    private static func normalizedCourseName(_ name: String) -> String {
+        name.replacingOccurrences(of: "\\s+", with: "", options: .regularExpression)
+            .replacingOccurrences(of: "（", with: "(")
+            .replacingOccurrences(of: "）", with: ")")
+            .lowercased()
+    }
+
+    private static func materialsDirectory(for courseName: String) throws -> URL {
+        let documents = try FileManager.default.url(
+            for: .documentDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let directory = documents
+            .appendingPathComponent("PathMateMaterials", isDirectory: true)
+            .appendingPathComponent(sanitizedFileName(courseName), isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory
+    }
+
+    private static func sanitizedFileName(_ value: String) -> String {
+        let invalid = CharacterSet(charactersIn: "/\\?%*|\"<>:")
+        return value.components(separatedBy: invalid).joined(separator: "_")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func fileType(for fileName: String) -> String {
+        let ext = (fileName as NSString).pathExtension.uppercased()
+        return ext.isEmpty ? "文件" : ext
+    }
+
+    private static func byteCountText(_ size: Int64?) -> String {
+        guard let size else { return "大小未知" }
+        return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    }
+
+    private static func looksLikeLoginPage(_ json: [String: Any]) -> Bool {
+        string(json["title"])?.contains("登录") == true
+    }
+
+    private static func string(_ value: Any?) -> String? {
+        if let value = value as? String { return value }
+        if let value = value as? NSNumber { return value.stringValue }
+        return nil
+    }
+
+    private static func int(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? NSNumber { return value.intValue }
+        if let value = value as? String { return Int(value) }
+        return nil
+    }
+
+    private static func int64(_ value: Any?) -> Int64? {
+        if let value = value as? Int64 { return value }
+        if let value = value as? Int { return Int64(value) }
+        if let value = value as? NSNumber { return value.int64Value }
+        if let value = value as? String { return Int64(value) }
+        return nil
+    }
+}

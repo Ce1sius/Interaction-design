@@ -647,6 +647,27 @@ final class PathMateStore: ObservableObject {
         save()
     }
 
+    func mergeMaterials(_ materials: [CourseMaterial], into courseID: UUID) -> Int {
+        guard let courseIndex = courses.firstIndex(where: { $0.id == courseID }) else { return 0 }
+        var insertedCount = 0
+        for material in materials {
+            let alreadyExists = courses[courseIndex].materials.contains { existing in
+                if let existingReferenceID = existing.remoteReferenceID,
+                   let materialReferenceID = material.remoteReferenceID {
+                    return existingReferenceID == materialReferenceID
+                }
+                return existing.title == material.title && existing.type == material.type
+            }
+            guard !alreadyExists else { continue }
+            courses[courseIndex].materials.append(material)
+            insertedCount += 1
+        }
+        if insertedCount > 0 {
+            save()
+        }
+        return insertedCount
+    }
+
     func toggleHomework(courseID: UUID, homeworkID: UUID) {
         guard let courseIndex = courses.firstIndex(where: { $0.id == courseID }),
               let homeworkIndex = courses[courseIndex].homework.firstIndex(where: { $0.id == homeworkID })

@@ -104,6 +104,56 @@ extension MindNode {
         .assigningHierarchy(level: 0, parentID: nil)
     }
 
+    static func courseTree(for course: Course) -> MindNode {
+        let topicNodes = courseMindTopics(for: course).map { topic in
+            MindNode(
+                title: topic.title,
+                summary: topic.explanation,
+                tags: ["重点"],
+                children: [
+                    MindNode(title: "概念解释", summary: topic.explanation, tags: ["概念"]),
+                    MindNode(title: "典型例子", summary: topic.example, tags: ["例题"]),
+                    MindNode(title: "常见误区", summary: "\(topic.title) 的易错点需要结合课堂例题和作业反馈整理。", tags: ["易错"]),
+                    MindNode(title: "复习路径", summary: topic.recommendation, tags: ["复习"])
+                ]
+            )
+        }
+
+        let resourceNodes = [
+            MindNode(title: "课件摘要", summary: course.summary, tags: ["课件"]),
+            MindNode(title: "作业关联", summary: course.homework.map(\.title).joined(separator: "、"), tags: ["作业"]),
+            MindNode(title: "复习建议", summary: course.courseNote, tags: ["Agent"])
+        ]
+
+        return MindNode(
+            title: course.name,
+            summary: course.summary,
+            tags: Array(Set(course.tags + [course.weight.rawValue])).sorted(),
+            children: [
+                MindNode(title: "课程重点", summary: "从课件、作业和课堂重点中抽取的核心知识点。", tags: ["知识点"], children: topicNodes),
+                MindNode(title: "学习资源", summary: "课件、作业和复习建议的课程资源入口。", tags: ["资源"], children: resourceNodes)
+            ]
+        )
+        .assigningHierarchy(level: 0, parentID: nil)
+    }
+
+    private static func courseMindTopics(for course: Course) -> [CourseMindTopic] {
+        if !course.studyTopics.isEmpty {
+            return course.studyTopics.map {
+                CourseMindTopic(title: $0.title, explanation: $0.explanation, example: $0.example, recommendation: $0.recommendation)
+            }
+        }
+        let keyPoints = course.keyPoints.isEmpty ? [course.name] : course.keyPoints
+        return keyPoints.map { title in
+            CourseMindTopic(
+                title: title,
+                explanation: "\(title) 是 \(course.name) 中需要优先理解的核心知识点。",
+                example: "结合课程章节和课堂例题，先识别 \(title) 出现的典型情境。",
+                recommendation: "先画出概念关系，再完成一道对应练习。"
+            )
+        }
+    }
+
     func assigningHierarchy(level: Int, parentID: UUID?) -> MindNode {
         var copy = self
         copy.level = level
@@ -158,4 +208,11 @@ extension MindNode {
             result.formUnion(child.descendantIDs())
         }
     }
+}
+
+private struct CourseMindTopic {
+    var title: String
+    var explanation: String
+    var example: String
+    var recommendation: String
 }

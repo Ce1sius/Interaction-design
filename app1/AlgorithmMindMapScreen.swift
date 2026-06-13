@@ -8,11 +8,22 @@ struct AlgorithmMindMapScreen: View {
         var id: String { rawValue }
     }
 
-    @StateObject private var viewModel = MindMapViewModel()
+    private let course: Course?
+    private let initialTopicTitle: String?
+
+    @StateObject private var viewModel: MindMapViewModel
     @State private var selectedResourceMode: ResourceMode = .replay
     @State private var isMindMapExpanded = true
     @State private var isResourceHeaderCollapsed = false
     @State private var selectedPracticeResource: PracticeResource?
+    @State private var didApplyInitialTopic = false
+
+    init(course: Course? = nil, initialTopicTitle: String? = nil) {
+        self.course = course
+        self.initialTopicTitle = initialTopicTitle
+        let rootNode = course.map { MindNode.courseTree(for: $0) } ?? MindNode.algorithmTree()
+        _viewModel = StateObject(wrappedValue: MindMapViewModel(rootNode: rootNode))
+    }
 
     var body: some View {
         ZStack {
@@ -44,6 +55,11 @@ struct AlgorithmMindMapScreen: View {
             }
         }
         .background(PMColor.softCanvas.ignoresSafeArea())
+        .navigationTitle(course == nil ? "图谱" : "\(course?.name ?? "")辅学")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            applyInitialTopicIfNeeded()
+        }
     }
 
     private var resourceHeader: some View {
@@ -73,7 +89,7 @@ struct AlgorithmMindMapScreen: View {
                 .accessibilityLabel("收起课件回放栏")
             }
 
-            Text("课程章节（包含哪些知识点）")
+            Text(course == nil ? "课程章节（包含哪些知识点）" : "\(course?.name ?? "")章节（包含哪些知识点）")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(PMColor.ink)
 
@@ -83,8 +99,10 @@ struct AlgorithmMindMapScreen: View {
                 VStack(spacing: 8) {
                     Image(systemName: selectedResourceMode == .replay ? "play.rectangle.fill" : "doc.richtext.fill")
                         .font(.system(size: 26, weight: .semibold))
-                    Text(selectedResourceMode == .replay ? "视频回放" : "课件预览")
+                    Text(mediaTitle)
                         .font(.system(size: 18, weight: .semibold))
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.78)
                 }
                 .foregroundStyle(.white.opacity(0.92))
             }
@@ -98,9 +116,10 @@ struct AlgorithmMindMapScreen: View {
 
     private var collapsedResourceHeader: some View {
         HStack(spacing: 10) {
-            Text("课件 / 回放")
+            Text(course == nil ? "课件 / 回放" : "\(course?.name ?? "")课件 / 回放")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(PMColor.steel)
+                .lineLimit(1)
             Spacer()
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
@@ -150,7 +169,7 @@ struct AlgorithmMindMapScreen: View {
                     Text("动态思维导图")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(PMColor.ink)
-                    Text("点击节点展开分支，确认后进入该知识点学习内容")
+                    Text(course == nil ? "点击节点展开分支，确认后进入该知识点学习内容" : "围绕 \(course?.name ?? "课程") 的课件、作业和重点知识点展开")
                         .font(.system(size: 12))
                         .foregroundStyle(PMColor.steel)
                 }
@@ -207,7 +226,7 @@ struct AlgorithmMindMapScreen: View {
 
             ScrollView {
                 KnowledgeDetailPanel(
-                    detail: viewModel.selectedKnowledgeDetail,
+                    detail: KnowledgeRepository.detail(for: viewModel.selectedNode, path: viewModel.selectedPathText, course: course),
                     relatedNodes: viewModel.selectedGraphRelatedNodes
                 ) { title in
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
@@ -282,6 +301,20 @@ struct AlgorithmMindMapScreen: View {
 
     private var breadcrumbTitle: String {
         viewModel.selectedPathText.replacingOccurrences(of: " / ", with: ">")
+    }
+
+    private var mediaTitle: String {
+        let sourceTitle = selectedResourceMode == .replay ? "视频回放" : "课件预览"
+        guard let course else { return sourceTitle }
+        return "\(course.name) · \(sourceTitle)"
+    }
+
+    private func applyInitialTopicIfNeeded() {
+        guard !didApplyInitialTopic else { return }
+        didApplyInitialTopic = true
+        guard let initialTopicTitle else { return }
+        viewModel.jumpToNode(title: initialTopicTitle)
+        isMindMapExpanded = false
     }
 }
 

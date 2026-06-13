@@ -239,6 +239,12 @@ struct CourseMaterial: Identifiable, Codable, Equatable {
     var dateText: String
     var summary: String
     var isDownloaded: Bool
+    var remoteID: Int64? = nil
+    var remoteReferenceID: Int64? = nil
+    var remoteCourseID: Int64? = nil
+    var remoteCourseName: String? = nil
+    var remoteSize: Int64? = nil
+    var localFileName: String? = nil
 }
 
 struct CourseHomework: Identifiable, Codable, Equatable {

@@ -43,6 +43,13 @@ struct RelatedKnowledgeNode: Identifiable, Equatable {
 }
 
 enum KnowledgeRepository {
+    static func detail(for node: MindNode, path: String, course: Course?) -> KnowledgeDetail {
+        guard let course else {
+            return detail(for: node, path: path)
+        }
+        return courseDetail(for: node, path: path, course: course)
+    }
+
     static func detail(for node: MindNode, path: String) -> KnowledgeDetail {
         if let detail = specialDetails[path] ?? specialDetails[node.title] {
             var copy = detail
@@ -50,6 +57,59 @@ enum KnowledgeRepository {
             return copy
         }
         return genericDetail(for: node, path: path)
+    }
+
+    private static func courseDetail(for node: MindNode, path: String, course: Course) -> KnowledgeDetail {
+        let topic = matchedTopic(in: course, path: path, nodeTitle: node.title)
+        let title = node.title
+        let topicTitle = topic?.title ?? title
+        let explanation = topic?.explanation ?? node.summary ?? course.summary
+        let example = topic?.example ?? "结合 \(course.name) 的课件、作业和课堂例题理解 \(topicTitle)。"
+        let recommendation = topic?.recommendation ?? course.courseNote
+        let homeworkTitles = course.homework.map(\.title)
+
+        return KnowledgeDetail(
+            title: title,
+            path: path,
+            difficulty: course.weight == .high ? "重点课程" : "课程专项",
+            estimatedTime: course.weight == .high ? "45-60 分钟" : "25-45 分钟",
+            goals: course.keyPoints.isEmpty ? ["理解 \(course.name) 的核心内容", "完成相关练习", "形成复习记录"] : course.keyPoints,
+            prerequisites: [course.name, course.teacher, course.goalRelation].filter { !$0.isEmpty },
+            coreConcepts: [
+                KnowledgeCoreConcept(title: "课程关联", content: course.goalRelation),
+                KnowledgeCoreConcept(title: "知识点学习", content: explanation),
+                KnowledgeCoreConcept(title: "典型例子", content: example),
+                KnowledgeCoreConcept(title: "学习建议", content: recommendation)
+            ],
+            examplesAndExercises: [
+                KnowledgeExercise(category: "讲解例题", title: "\(topicTitle)课堂例题", description: example, actionTitle: "查看解析"),
+                KnowledgeExercise(category: "跟练题", title: "\(topicTitle)跟练", description: "根据课件中的步骤补全关键推导或操作。", actionTitle: "获取提示"),
+                KnowledgeExercise(category: "自测题", title: "\(topicTitle)自测", description: "不看答案复述概念，并完成一道对应练习。", actionTitle: "开始自测"),
+                KnowledgeExercise(category: "错题复盘", title: homeworkTitles.first ?? "\(topicTitle)易错复盘", description: homeworkTitles.isEmpty ? "整理 \(topicTitle) 最容易漏掉的边界、公式或步骤。" : "关联本周作业：\(homeworkTitles.joined(separator: "、"))", actionTitle: "查看易错点")
+            ],
+            mistakes: [
+                "只记结论，没有回到 \(course.name) 的课堂例子验证",
+                "忽略作业或小测中的边界条件",
+                "没有把课件知识点和复习任务关联起来"
+            ],
+            faqs: [
+                KnowledgeFAQ(question: "这一块为什么重要？", answer: "\(topicTitle) 与 \(course.goalRelation) 相关，复习时建议优先掌握概念和典型例子。"),
+                KnowledgeFAQ(question: "我应该怎么复习？", answer: recommendation)
+            ],
+            quickQuestions: [
+                "\(topicTitle) 的核心概念是什么？",
+                "给我一个 \(course.name) 的例子",
+                "这一块有哪些易错点？",
+                "帮我生成复习步骤"
+            ],
+            relatedNodes: course.studyTopics.map { RelatedKnowledgeNode(relation: $0.title == topicTitle ? "当前位置" : "相关", title: $0.title) }
+        )
+    }
+
+    private static func matchedTopic(in course: Course, path: String, nodeTitle: String) -> StudyAidTopic? {
+        course.studyTopics.first { topic in
+            topic.title == nodeTitle || path.contains(topic.title)
+        }
     }
 
     private static let quickQuestions = [
