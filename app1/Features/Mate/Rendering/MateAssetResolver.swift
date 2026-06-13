@@ -16,7 +16,9 @@ struct MateAssetResolver {
                 return stage == .adult ? "MateAdultLaugh" : "MateChildPeace"
             case .appOpened:
                 return stage == .adult ? "MateAdultPose" : "MateChildPeace"
-            case .dragged, .schedulePlanningStarted:
+            case .schedulePlanningStarted:
+                return stage == .adult ? "MateAdultThink" : "MateChildTilt"
+            case .dragged:
                 break
             }
         }
@@ -24,6 +26,8 @@ struct MateAssetResolver {
         switch stage {
         case .adult:
             switch mood {
+            case .thinking:
+                return "MateAdultThink"
             case .celebrating, .happy, .encouraging:
                 return "MateAdultPose"
             default:

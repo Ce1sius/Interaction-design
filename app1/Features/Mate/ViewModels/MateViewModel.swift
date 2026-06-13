@@ -62,7 +62,7 @@ final class MateViewModel: ObservableObject {
     var streakDays: Int { profile.streakDays }
     var currentAssetName: String {
         if displayState == .minimized {
-            return "MateChildSleep"
+            return profile.growthStage == .adult ? "MateAdultSleep" : "MateChildSleep"
         }
         if isMenuExpanded {
             return profile.growthStage == .adult ? "MateAdultPose" : "MateChildWink"
