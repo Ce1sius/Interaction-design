@@ -44,12 +44,24 @@ struct MindMapCanvasView: View {
                 }
             }
             .contentShape(Rectangle())
-            .background(PMColor.surfaceRaised)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(PMColor.hairline, lineWidth: 1)
+            .background {
+                RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                    .fill(PMColor.paper)
+                RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [PMColor.primaryMist.opacity(0.66), .clear, PMColor.studyMint.opacity(0.34)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
             }
+            .clipShape(RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                    .strokeBorder(PMColor.hairline, lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.055), radius: 14, x: 0, y: 5)
             .simultaneousGesture(dragGesture)
             .simultaneousGesture(magnificationGesture)
             .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.visibleNodes.count)
@@ -88,16 +100,22 @@ struct MindMapCanvasView: View {
 
     private func drawBackground(in context: inout GraphicsContext, size: CGSize) {
         let rect = CGRect(origin: .zero, size: size)
-        context.fill(Path(rect), with: .color(PMColor.surfaceRaised))
+        context.fill(Path(rect), with: .color(PMColor.paper))
 
-        let gridColor = PMColor.hairline.opacity(0.2)
-        let step: CGFloat = 42
+        let topGlow = CGRect(x: -size.width * 0.28, y: -size.height * 0.24, width: size.width * 0.75, height: size.height * 0.58)
+        context.fill(Path(ellipseIn: topGlow), with: .color(PMColor.primarySoft.opacity(0.42)))
+
+        let lowerGlow = CGRect(x: size.width * 0.54, y: size.height * 0.48, width: size.width * 0.56, height: size.height * 0.44)
+        context.fill(Path(ellipseIn: lowerGlow), with: .color(PMColor.studyMint.opacity(0.34)))
+
+        let gridColor = PMColor.graphGrid.opacity(0.22)
+        let step: CGFloat = 38
         var x = viewModel.offset.width.truncatingRemainder(dividingBy: step)
         while x < size.width {
             var line = Path()
             line.move(to: CGPoint(x: x, y: 0))
             line.addLine(to: CGPoint(x: x, y: size.height))
-            context.stroke(line, with: .color(gridColor), lineWidth: 0.45)
+            context.stroke(line, with: .color(gridColor), lineWidth: 0.38)
             x += step
         }
 
@@ -106,7 +124,7 @@ struct MindMapCanvasView: View {
             var line = Path()
             line.move(to: CGPoint(x: 0, y: y))
             line.addLine(to: CGPoint(x: size.width, y: y))
-            context.stroke(line, with: .color(gridColor), lineWidth: 0.45)
+            context.stroke(line, with: .color(gridColor), lineWidth: 0.38)
             y += step
         }
     }
@@ -135,13 +153,13 @@ struct MindMapCanvasView: View {
 
             let isFocused = viewModel.isEdgeInFocusedBranch(edge)
             let distanceOpacity = edgeOpacity(for: source, target: target, in: size)
-            let opacity = (isFocused ? 0.78 : 0.14) * distanceOpacity
-            let lineWidth = (isFocused ? 2.4 : 1.05) * min(max(viewModel.scale, 0.7), 1.35)
+            let opacity = (isFocused ? 0.82 : 0.18) * distanceOpacity
+            let lineWidth = (isFocused ? 2.6 : 1.1) * min(max(viewModel.scale, 0.7), 1.35)
             if isFocused {
                 context.stroke(
                     path,
-                    with: .color(edgeColor(for: sourceNode).opacity(0.12 * distanceOpacity)),
-                    style: StrokeStyle(lineWidth: lineWidth + 5, lineCap: .round, lineJoin: .round)
+                    with: .color(edgeColor(for: sourceNode).opacity(0.14 * distanceOpacity)),
+                    style: StrokeStyle(lineWidth: lineWidth + 6, lineCap: .round, lineJoin: .round)
                 )
             }
             context.stroke(
@@ -162,7 +180,7 @@ struct MindMapCanvasView: View {
         let centerOpacity = max(0.35, min(1.0, 1.15 - distance / 700))
         let selectedBoost: CGFloat = viewModel.selectedNodeID == node.id ? 1.08 : 1
         let branchScale: CGFloat = viewModel.isNodeInFocusedBranch(node) ? 1 : 0.96
-        let branchOpacity: CGFloat = viewModel.isNodeInFocusedBranch(node) ? 1 : 0.34
+        let branchOpacity: CGFloat = viewModel.isNodeInFocusedBranch(node) ? 1 : 0.42
         return NodeRenderMetrics(
             screenPosition: screenPosition,
             finalScale: viewModel.scale * centerScale * selectedBoost * branchScale,
@@ -197,7 +215,7 @@ struct MindMapCanvasView: View {
 
     private func nodeBaseWidth(for node: MindNode) -> CGFloat {
         let estimatedTextWidth = CGFloat(node.title.count) * 15 + 54
-        return min(152, max(112, estimatedTextWidth))
+        return min(158, max(116, estimatedTextWidth))
     }
 
     private func edgeColor(for node: MindNode) -> Color {
@@ -255,15 +273,17 @@ private struct MindMapNodeButton: View {
             }
             .frame(minWidth: 92, maxWidth: 132, minHeight: 36)
             .padding(.horizontal, 10)
-            .background(background)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background {
+                nodeBackground
+            }
+            .clipShape(RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
                     .stroke(borderColor, lineWidth: isSelected ? 1.5 : 1)
             }
             .overlay(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.white.opacity(isSelected ? 0.16 : 0.08))
+                RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                    .fill(.white.opacity(isSelected ? 0.18 : 0.1))
                     .frame(height: 16)
                     .padding(.horizontal, 2)
                     .padding(.top, 2)
@@ -275,11 +295,19 @@ private struct MindMapNodeButton: View {
         .accessibilityLabel(node.title)
     }
 
-    private var background: Color {
+    @ViewBuilder
+    private var nodeBackground: some View {
         if isSelected {
-            return PMColor.primary
+            LinearGradient(
+                colors: [PMColor.primary, PMColor.primaryPressed],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else if isFocusedBranch {
+            PMColor.canvas.opacity(0.98)
+        } else {
+            PMColor.surface.opacity(0.88)
         }
-        return isFocusedBranch ? PMColor.canvas.opacity(0.96) : PMColor.surface.opacity(0.88)
     }
 
     private var borderColor: Color {

@@ -57,9 +57,16 @@ struct MateFloatingView: View {
 
     private var thinkingDots: some View {
         ZStack {
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .frame(width: 64, height: 28)
+                .overlay {
+                    Capsule().stroke(PMColor.hairline, lineWidth: 1)
+                }
+                .offset(y: -62)
             ForEach(0..<3, id: \.self) { index in
                 Circle()
-                    .fill(Color(hex: "#2488ff").opacity(0.6))
+                    .fill(PMColor.primary.opacity(0.72))
                     .frame(width: 8, height: 8)
                     .offset(x: CGFloat(index - 1) * 16, y: -62)
                     .scaleEffect(reduceMotion ? 1 : 0.85)

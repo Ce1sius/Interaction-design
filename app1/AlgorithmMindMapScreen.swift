@@ -109,8 +109,16 @@ struct AlgorithmMindMapScreen: View {
                 .foregroundStyle(PMColor.ink)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(light: "#3d302f", dark: "#211b1b"))
+                RoundedRectangle(cornerRadius: PMRadius.button, style: .continuous)
+                    .fill(Color(light: "#312a25", dark: "#161414"))
+                RoundedRectangle(cornerRadius: PMRadius.button, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [PMColor.primary.opacity(0.18), .clear, PMColor.warning.opacity(0.12)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
                 resourceMediaContent
                     .foregroundStyle(.white.opacity(0.92))
                     .padding(12)
@@ -119,8 +127,18 @@ struct AlgorithmMindMapScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color(light: "#dedede", dark: "#1e1e20"))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background {
+            RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                .fill(PMColor.surfaceRaised)
+            RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                .fill(LinearGradient(colors: [PMColor.primaryMist, .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                .strokeBorder(PMColor.hairline, lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.055), radius: 12, x: 0, y: 4)
     }
 
     private var collapsedResourceHeader: some View {
@@ -146,12 +164,7 @@ struct AlgorithmMindMapScreen: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(PMColor.surfaceRaised)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(PMColor.hairline, lineWidth: 1)
-        }
+        .pathCardStyle(cornerRadius: PMRadius.card, accent: PMColor.primary)
     }
 
     @ViewBuilder
@@ -221,8 +234,12 @@ struct AlgorithmMindMapScreen: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 14)
-                .background(PMColor.primary)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .background {
+                    RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                        .fill(LinearGradient(colors: [PMColor.primary, PMColor.primaryPressed], startPoint: .topLeading, endPoint: .bottomTrailing))
+                }
+                .clipShape(RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous))
+                .shadow(color: PMColor.primary.opacity(0.24), radius: 14, x: 0, y: 7)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 16)
@@ -304,12 +321,7 @@ struct AlgorithmMindMapScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(PMColor.surfaceRaised)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(PMColor.hairline, lineWidth: 1)
-        }
+        .pathCardStyle(cornerRadius: PMRadius.panel, accent: PMColor.primary)
     }
 
     private var breadcrumbTitle: String {

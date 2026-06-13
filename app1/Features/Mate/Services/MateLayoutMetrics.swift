@@ -8,11 +8,11 @@ struct MateLayoutMetrics {
     var celebrationSize: CGFloat = 142
     var minimizedVisibleHeight: CGFloat = 40
     var edgePadding: CGFloat = 16
-    var bottomPadding: CGFloat = 100
+    var bottomPadding: CGFloat = 132
     var topMinimizedPadding: CGFloat = 2
     var minimizedTouchFrameSize: CGFloat = 48
     var menuButtonSize: CGFloat = 48
-    var menuRadius: CGFloat = 82
+    var menuRadius: CGFloat = 88
     var snapAnimationResponse: Double = 0.42
     var snapAnimationDamping: Double = 0.72
 

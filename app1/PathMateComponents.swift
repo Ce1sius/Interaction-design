@@ -31,17 +31,28 @@ struct PathButton: View {
             }
             .font(.system(size: 15, weight: .semibold))
             .foregroundStyle(foregroundColor)
-            .frame(minHeight: 44)
+            .frame(minHeight: 46)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 14)
-            .background(backgroundColor)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            .padding(.horizontal, PMSpacing.lg)
+            .background {
+                buttonBackground
+            }
+            .clipShape(RoundedRectangle(cornerRadius: PMRadius.button, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: PMRadius.button, style: .continuous)
                     .stroke(borderColor, lineWidth: borderColor == .clear ? 0 : 1)
             }
-            .scaleEffect(isPressed ? 0.98 : 1)
-            .animation(.spring(response: 0.18, dampingFraction: 0.75), value: isPressed)
+            .overlay(alignment: .top) {
+                if style == .primary {
+                    RoundedRectangle(cornerRadius: PMRadius.button, style: .continuous)
+                        .fill(.white.opacity(0.18))
+                        .frame(height: 1)
+                        .padding(.horizontal, 2)
+                }
+            }
+            .shadow(color: shadowColor, radius: style == .primary ? 12 : 0, x: 0, y: style == .primary ? 6 : 0)
+            .scaleEffect(isPressed ? 0.975 : 1)
+            .animation(.spring(response: PMMotion.buttonResponse, dampingFraction: PMMotion.buttonDamping), value: isPressed)
         }
         .buttonStyle(.plain)
         .disabled(isLoading)
@@ -60,19 +71,32 @@ struct PathButton: View {
         }
     }
 
-    private var backgroundColor: Color {
+    @ViewBuilder
+    private var buttonBackground: some View {
         switch style {
-        case .primary: return PMColor.primary
-        case .secondary: return PMColor.surfaceRaised
-        case .ghost, .destructive: return .clear
+        case .primary:
+            LinearGradient(
+                colors: [PMColor.primary, PMColor.primaryPressed],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        case .secondary:
+            PMColor.surfaceRaised
+        case .ghost, .destructive:
+            Color.clear
         }
     }
 
     private var borderColor: Color {
         switch style {
         case .secondary: return PMColor.strongHairline
+        case .destructive: return PMColor.conflict.opacity(0.28)
         default: return .clear
         }
+    }
+
+    private var shadowColor: Color {
+        style == .primary ? PMColor.primary.opacity(0.22) : .clear
     }
 }
 
@@ -85,12 +109,18 @@ struct IconButton: View {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(PMColor.primary)
-                .frame(width: 42, height: 42)
-                .background(PMColor.surfaceRaised)
+                .frame(width: 44, height: 44)
+                .background {
+                    Circle()
+                        .fill(PMColor.surfaceRaised)
+                    Circle()
+                        .fill(PMColor.primary.opacity(0.055))
+                }
                 .clipShape(Circle())
                 .overlay {
                     Circle().stroke(PMColor.hairline, lineWidth: 1)
                 }
+                .shadow(color: .black.opacity(0.05), radius: 9, x: 0, y: 4)
         }
         .buttonStyle(.plain)
     }
@@ -112,10 +142,13 @@ struct TagChip: View {
                 .lineLimit(1)
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .background(tint.opacity(0.13))
+        .background(tint.opacity(0.12))
         .clipShape(Capsule())
+        .overlay {
+            Capsule().stroke(tint.opacity(0.16), lineWidth: 1)
+        }
     }
 }
 
@@ -128,8 +161,7 @@ struct InfoBox: View {
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Image(systemName: icon)
-                .foregroundStyle(tint)
-                .padding(.top, 2)
+                .pathIconWell(tint: tint, size: 34, cornerRadius: 11)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 14, weight: .semibold))
@@ -141,9 +173,18 @@ struct InfoBox: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
-        .background(tint.opacity(0.1))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(PMSpacing.md)
+        .background {
+            RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                .fill(tint.opacity(0.08))
+            RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                .fill(PMColor.surfaceRaised.opacity(0.42))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                .stroke(tint.opacity(0.16), lineWidth: 1)
+        }
     }
 }
 
@@ -157,10 +198,11 @@ struct TaskCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Circle()
+                RoundedRectangle(cornerRadius: 999, style: .continuous)
                     .fill(PMColor.task(task.kind))
-                    .frame(width: compact ? 12 : 16, height: compact ? 12 : 16)
-                    .padding(.top, 6)
+                    .frame(width: compact ? 5 : 6)
+                    .frame(height: compact ? 54 : 68)
+                    .shadow(color: PMColor.task(task.kind).opacity(0.22), radius: 8, x: 0, y: 3)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(task.title)
@@ -191,7 +233,7 @@ struct TaskCard: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     if task.isAgentGenerated {
                         Image(systemName: "sparkles")
-                            .foregroundStyle(PMColor.primary)
+                            .pathIconWell(tint: PMColor.primary, size: 30, cornerRadius: 10)
                     }
                     Image(systemName: "chevron.right")
                         .foregroundStyle(PMColor.muted)
@@ -233,7 +275,7 @@ struct TaskCard: View {
             }
         }
         .padding(compact ? 14 : 16)
-        .pathCardStyle()
+        .pathCardStyle(accent: task.isAgentGenerated ? PMColor.primary : PMColor.task(task.kind))
         .opacity(task.status == .completed ? 0.68 : 1)
         .accessibilityElement(children: .combine)
     }
@@ -246,10 +288,8 @@ struct CourseCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Circle()
-                    .fill(PMColor.course)
-                    .frame(width: 16, height: 16)
-                    .padding(.top, 6)
+                Image(systemName: "book.closed.fill")
+                    .pathIconWell(tint: PMColor.course, size: 42, cornerRadius: 13)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(course.name)
@@ -270,10 +310,14 @@ struct CourseCard: View {
                         Label("辅学", systemImage: "sparkles")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(PMColor.primary)
+                            .padding(.horizontal, 11)
+                            .padding(.vertical, 8)
+                            .background {
+                                Capsule()
+                                    .fill(LinearGradient(colors: [PMColor.primary, PMColor.primaryPressed], startPoint: .topLeading, endPoint: .bottomTrailing))
+                            }
                             .clipShape(Capsule())
+                            .shadow(color: PMColor.primary.opacity(0.2), radius: 8, x: 0, y: 4)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("进入课程辅学")
@@ -292,7 +336,7 @@ struct CourseCard: View {
             FlowTags(tags: Array(Set([course.academicTerm?.shortName].compactMap { $0 } + course.tags)).sorted(), tint: PMColor.primary)
         }
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.course)
     }
 }
 
@@ -322,11 +366,7 @@ struct SuggestionCard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: statusIcon)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(statusTint)
-                    .frame(width: 32, height: 32)
-                    .background(statusTint.opacity(0.13))
-                    .clipShape(Circle())
+                    .pathIconWell(tint: statusTint, size: 36, cornerRadius: 12)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(suggestion.title)
@@ -352,6 +392,10 @@ struct SuggestionCard: View {
                 Text(suggestion.reason)
                     .font(.system(size: 14))
                     .foregroundStyle(PMColor.slate)
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(statusTint.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous))
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
@@ -375,7 +419,7 @@ struct SuggestionCard: View {
             .font(.system(size: 13, weight: .semibold))
         }
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: statusTint)
     }
 
     private var statusTint: Color {
@@ -408,11 +452,7 @@ struct EmptyStateView: View {
     var body: some View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
-                .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(PMColor.primary)
-                .frame(width: 56, height: 56)
-                .background(PMColor.primary.opacity(0.13))
-                .clipShape(Circle())
+                .pathIconWell(tint: PMColor.primary, size: 56, cornerRadius: 18)
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(PMColor.charcoal)
@@ -423,7 +463,7 @@ struct EmptyStateView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 }
 
@@ -440,15 +480,20 @@ struct ToastBanner: View {
                 .lineLimit(2)
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(PMColor.surfaceRaised)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(.horizontal, 15)
+        .padding(.vertical, 13)
+        .background {
+            RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                .fill(PMColor.surfaceRaised)
+            RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
+                .fill(PMColor.success.opacity(0.055))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: PMRadius.panel, style: .continuous)
                 .stroke(PMColor.hairline, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 6)
+        .shadow(color: .black.opacity(0.1), radius: 18, x: 0, y: 8)
         .padding(.horizontal, 16)
     }
 }

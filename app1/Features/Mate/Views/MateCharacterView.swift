@@ -14,16 +14,25 @@ struct MateCharacterView: View {
             Circle()
                 .fill(
                     LinearGradient(
-                        colors: [Color(hex: "#fff6b8"), Color(hex: "#fffdf0")],
+                        colors: [PMColor.studyWarm, PMColor.surfaceRaised, PMColor.agentGlow],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
                 )
                 .overlay {
                     Circle()
-                        .stroke(Color.white.opacity(0.75), lineWidth: 2)
+                        .stroke(PMColor.hairline.opacity(0.72), lineWidth: 1.5)
                 }
-                .shadow(color: Color(hex: "#ffcc00").opacity(isGlowActive ? 0.38 : 0.18), radius: isGlowActive ? 24 : 12, x: 0, y: 8)
+                .overlay(alignment: .topLeading) {
+                    Circle()
+                        .fill(.white.opacity(0.32))
+                        .frame(width: size * 0.36, height: size * 0.36)
+                        .offset(x: size * 0.13, y: size * 0.1)
+                        .blur(radius: 5)
+                        .allowsHitTesting(false)
+                }
+                .shadow(color: PMColor.primary.opacity(isGlowActive ? 0.28 : 0.14), radius: isGlowActive ? 26 : 14, x: 0, y: 8)
+                .shadow(color: PMColor.warning.opacity(isGlowActive ? 0.2 : 0.1), radius: isGlowActive ? 18 : 10, x: 0, y: 5)
 
             if assetExists {
                 StaticImageMateRenderer().makeBody(assetName: assetName, size: size * 0.92)
@@ -45,7 +54,7 @@ struct MateCharacterView: View {
             Text("Mate")
                 .font(.system(size: size * 0.16, weight: .bold))
         }
-        .foregroundStyle(Color(hex: "#c58b00"))
+        .foregroundStyle(PMColor.warning)
     }
 
     private var assetExists: Bool {

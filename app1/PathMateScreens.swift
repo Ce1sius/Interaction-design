@@ -460,25 +460,56 @@ struct LaunchPage: View {
     var onStart: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Spacer()
-            Image(systemName: "sparkles")
-                .font(.system(size: 34, weight: .semibold))
-                .foregroundStyle(PMColor.primary)
-                .frame(width: 72, height: 72)
-                .background(PMColor.primary.opacity(0.13))
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            Text("PathMate")
-                .font(.system(size: 42, weight: .bold))
-                .foregroundStyle(PMColor.ink)
-            Text("把课程、作业、复习、个人事项和长期目标放进同一个可协作的 Agent 日程里。")
-                .font(.system(size: 18))
-                .foregroundStyle(PMColor.slate)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer()
-            PathButton(title: "开始设置", systemImage: "arrow.right.circle.fill", action: onStart)
+        ZStack {
+            PMColor.softCanvas.ignoresSafeArea()
+            VStack {
+                Circle()
+                    .fill(PMColor.primarySoft)
+                    .frame(width: 260, height: 260)
+                    .blur(radius: 36)
+                    .offset(x: 120, y: -120)
+                Spacer()
+                Circle()
+                    .fill(PMColor.studyWarm)
+                    .frame(width: 220, height: 220)
+                    .blur(radius: 40)
+                    .offset(x: -120, y: 90)
+            }
+            .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 20) {
+                Spacer()
+                ZStack {
+                    RoundedRectangle(cornerRadius: PMRadius.hero, style: .continuous)
+                        .fill(PMColor.surfaceRaised)
+                        .frame(width: 86, height: 86)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: PMRadius.hero, style: .continuous)
+                                .stroke(PMColor.hairline, lineWidth: 1)
+                        }
+                        .shadow(color: PMColor.primary.opacity(0.16), radius: 22, x: 0, y: 10)
+                    Image("MateChildWink")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 72, height: 72)
+                }
+                Text("PathMate")
+                    .font(.system(size: 44, weight: .bold))
+                    .foregroundStyle(PMColor.ink)
+                Text("把课程、作业、复习、个人事项和长期目标放进同一个可协作的 Agent 日程里。")
+                    .font(.system(size: 18))
+                    .foregroundStyle(PMColor.slate)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    TagChip(title: "目标驱动", systemImage: "target", tint: PMColor.goal)
+                    TagChip(title: "课程辅学", systemImage: "book.closed.fill", tint: PMColor.course)
+                    TagChip(title: "Agent 协作", systemImage: "sparkles", tint: PMColor.primary)
+                }
+                Spacer()
+                PathButton(title: "开始设置", systemImage: "arrow.right.circle.fill", action: onStart)
+            }
+            .padding(28)
         }
-        .padding(28)
     }
 }
 
@@ -531,20 +562,29 @@ struct NextUpView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("最近安排")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(PMColor.ink)
-            Text("\(store.profile.school) · \(store.profile.goal.strategyTitle)")
-                .font(.system(size: 14))
-                .foregroundStyle(PMColor.slate)
-            Text(currentTerm.displayName)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(PMColor.primary)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "clock.badge.checkmark")
+                    .pathIconWell(tint: PMColor.primary, size: 44, cornerRadius: 14)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("最近安排")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(PMColor.ink)
+                    Text("\(store.profile.school) · \(store.profile.goal.strategyTitle)")
+                        .font(.system(size: 14))
+                        .foregroundStyle(PMColor.slate)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+            }
+            HStack(spacing: 8) {
+                TagChip(title: currentTerm.displayName, systemImage: "calendar.badge.clock", tint: PMColor.primary)
+                TagChip(title: store.profile.goal.rawValue, systemImage: store.profile.goal.iconName, tint: PMColor.goal)
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 
     private var focusSection: some View {
@@ -671,7 +711,7 @@ struct NextUpView: View {
                 .foregroundStyle(PMColor.slate)
         }
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 
     @ViewBuilder
@@ -749,6 +789,8 @@ struct ScheduleView: View {
     private var scheduleHeader: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
+                Image(systemName: "calendar")
+                    .pathIconWell(tint: PMColor.primary, size: 46, cornerRadius: 15)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(monthTitle)
                         .font(.system(size: 30, weight: .bold))
@@ -797,7 +839,7 @@ struct ScheduleView: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 
     private var termMenu: some View {
@@ -920,16 +962,23 @@ struct TaskHubView: View {
     }
 
     private var taskHeader: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Agent 任务协作", systemImage: "sparkles")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(PMColor.ink)
-            Text("接受、修改、拒绝建议都在这里完成。任务仍可手动编辑，Agent 只提供可解释的调整。")
-                .font(.system(size: 14))
-                .foregroundStyle(PMColor.slate)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "sparkles")
+                    .pathIconWell(tint: PMColor.primary, size: 44, cornerRadius: 14)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Agent 任务协作")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(PMColor.ink)
+                    Text("接受、修改、拒绝建议都在这里完成。任务仍可手动编辑，Agent 只提供可解释的调整。")
+                        .font(.system(size: 14))
+                        .foregroundStyle(PMColor.slate)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 
     private var suggestionsSection: some View {
@@ -1143,13 +1192,20 @@ struct AcademicsView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("课程与辅学")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(PMColor.ink)
-            Text("课程详情里可以查看课件、作业、重点知识点和辅学解释。")
-                .font(.system(size: 14))
-                .foregroundStyle(PMColor.slate)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "graduationcap.fill")
+                    .pathIconWell(tint: PMColor.course, size: 44, cornerRadius: 14)
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("课程与辅学")
+                        .font(.system(size: 28, weight: .semibold))
+                        .foregroundStyle(PMColor.ink)
+                    Text("课程详情里可以查看课件、作业、重点知识点和辅学解释。")
+                        .font(.system(size: 14))
+                        .foregroundStyle(PMColor.slate)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
             Button {
                 showingImportCenter = true
             } label: {
@@ -1161,7 +1217,7 @@ struct AcademicsView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.course)
     }
 }
 
@@ -1723,7 +1779,7 @@ struct SettingsView: View {
             InfoBox(title: "目标是常驻信息", message: "目标会影响任务优先级。需要调整时请在下方设置区修改。", icon: "lock.fill")
         }
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 
     private var appearanceCard: some View {
@@ -2610,7 +2666,13 @@ struct MonthCalendarView: View {
                     .font(.system(size: 22, weight: selected ? .bold : .medium))
                     .foregroundStyle(selected ? .white : PMColor.ink)
                     .frame(width: 46, height: 40)
-                    .background(selected ? PMColor.primary : .clear)
+                    .background {
+                        if selected {
+                            Circle()
+                                .fill(LinearGradient(colors: [PMColor.primary, PMColor.primaryPressed], startPoint: .topLeading, endPoint: .bottomTrailing))
+                                .shadow(color: PMColor.primary.opacity(0.24), radius: 9, x: 0, y: 4)
+                        }
+                    }
                     .clipShape(Circle())
                 HStack(spacing: 3) {
                     ForEach(Array(dayTasks.prefix(5).enumerated()), id: \.offset) { _, task in
@@ -2884,9 +2946,8 @@ struct AgendaCard: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Circle()
-                .fill(PMColor.task(task.kind))
-                .frame(width: 16, height: 16)
+            Image(systemName: task.kind.iconName)
+                .pathIconWell(tint: PMColor.task(task.kind), size: 44, cornerRadius: 14)
             VStack(alignment: .leading, spacing: 7) {
                 Text(task.title)
                     .font(.system(size: 19, weight: .bold))
@@ -2904,7 +2965,7 @@ struct AgendaCard: View {
                 .foregroundStyle(PMColor.muted)
         }
         .padding(18)
-        .pathCardStyle(cornerRadius: 18)
+        .pathCardStyle(cornerRadius: 18, accent: PMColor.task(task.kind))
     }
 }
 
@@ -2946,7 +3007,7 @@ struct UpcomingCard: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.task(task.kind))
     }
 
     private var minutesUntilStart: Int {
@@ -2967,10 +3028,8 @@ struct CountdownFocusCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top, spacing: 12) {
-                Circle()
-                    .fill(PMColor.task(task.kind))
-                    .frame(width: 16, height: 16)
-                    .padding(.top, 8)
+                Image(systemName: task.kind.iconName)
+                    .pathIconWell(tint: PMColor.task(task.kind), size: 48, cornerRadius: 15)
                 VStack(alignment: .leading, spacing: 10) {
                     Text(task.title)
                         .font(.system(size: 22, weight: .bold))
@@ -2999,7 +3058,7 @@ struct CountdownFocusCard: View {
                 .tint(PMColor.task(task.kind))
         }
         .padding(18)
-        .pathCardStyle(cornerRadius: 18)
+        .pathCardStyle(cornerRadius: 18, accent: PMColor.task(task.kind))
     }
 
     private var countdown: String {
@@ -3026,10 +3085,7 @@ struct ImportMethodRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .foregroundStyle(PMColor.primary)
-                .frame(width: 34, height: 34)
-                .background(PMColor.primary.opacity(0.13))
-                .clipShape(Circle())
+                .pathIconWell(tint: PMColor.primary, size: 38, cornerRadius: 12)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 15, weight: .semibold))
@@ -3041,7 +3097,7 @@ struct ImportMethodRow: View {
             Spacer()
         }
         .padding(14)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 }
 
@@ -3053,10 +3109,7 @@ struct FeatureLine: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: icon)
-                .foregroundStyle(PMColor.primary)
-                .frame(width: 32, height: 32)
-                .background(PMColor.primary.opacity(0.12))
-                .clipShape(Circle())
+                .pathIconWell(tint: PMColor.primary, size: 38, cornerRadius: 12)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title)
                     .font(.system(size: 15, weight: .semibold))
@@ -3070,7 +3123,7 @@ struct FeatureLine: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 }
 

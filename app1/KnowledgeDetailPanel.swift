@@ -93,8 +93,17 @@ struct KnowledgeDetailPanel: View {
                     .foregroundStyle(PMColor.muted)
             }
             .padding(12)
-            .background(PMColor.surface)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background {
+                RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                    .fill(PMColor.primaryMist)
+                RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                    .fill(LinearGradient(colors: [PMColor.primary.opacity(0.08), .clear], startPoint: .topLeading, endPoint: .bottomTrailing))
+            }
+            .clipShape(RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                    .strokeBorder(PMColor.primary.opacity(0.14), lineWidth: 1)
+            }
         }
     }
 
@@ -123,8 +132,17 @@ struct KnowledgeDetailPanel: View {
                         .frame(maxWidth: .infinity)
                         .aspectRatio(1, contentMode: .fit)
                         .padding(8)
-                        .background(PMColor.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .background {
+                            RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                                .fill(PMColor.surfaceRaised)
+                            RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                                .fill(resource.tint.opacity(0.055))
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                                .strokeBorder(resource.tint.opacity(0.14), lineWidth: 1)
+                        }
                     }
                     .buttonStyle(.plain)
                 }
@@ -146,8 +164,7 @@ struct KnowledgeDetailPanel: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
-                    .background(PMColor.surface)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .pathPanelStyle(cornerRadius: PMRadius.card)
                 }
 
                 HStack(spacing: 8) {
@@ -162,8 +179,12 @@ struct KnowledgeDetailPanel: View {
                     .disabled(agentQuestion.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
                 .padding(12)
-                .background(PMColor.surface)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background(PMColor.primaryMist)
+                .clipShape(RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: PMRadius.card, style: .continuous)
+                        .strokeBorder(PMColor.primary.opacity(0.16), lineWidth: 1)
+                }
 
                 StringFlowWrap(items: detail.quickQuestions) { question in
                     Button {
@@ -280,7 +301,7 @@ struct KnowledgeDetailPanel: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .pathCardStyle()
+        .pathCardStyle(accent: PMColor.primary)
     }
 
     private func bulletList(title: String?, items: [String], tint: Color = PMColor.primary) -> some View {
@@ -511,8 +532,19 @@ private struct LearningRecordButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .foregroundStyle(isOn ? .white : PMColor.charcoal)
-                .background(isOn ? PMColor.primary : PMColor.surface)
+                .background {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(isOn ? PMColor.primary : PMColor.surfaceRaised)
+                    if !isOn {
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .fill(PMColor.surface)
+                    }
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .strokeBorder(isOn ? PMColor.primaryPressed.opacity(0.35) : PMColor.hairline, lineWidth: 1)
+                }
         }
         .buttonStyle(.plain)
     }
