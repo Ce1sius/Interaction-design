@@ -1,0 +1,1 @@
+"""Course material discovery helpers."""
