@@ -1,0 +1,26 @@
+[
+  {
+    "id": "data-structure",
+    "name": "数据结构",
+    "semester": "2026-spring",
+    "sourcePages": [
+      "https://courses.zju.edu.cn/user/courses"
+    ],
+    "allowedDomains": [
+      "courses.zju.edu.cn"
+    ],
+    "accessType": "authenticated"
+  },
+  {
+    "id": "college-english",
+    "name": "大学英语",
+    "semester": "2026-spring",
+    "sourcePages": [
+      "https://courses.zju.edu.cn/user/courses"
+    ],
+    "allowedDomains": [
+      "courses.zju.edu.cn"
+    ],
+    "accessType": "authenticated"
+  }
+]

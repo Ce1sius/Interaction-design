@@ -1,0 +1,6 @@
+Backend/.env
+Backend/data/*.db
+Backend/data/*.db-*
+Backend/.pytest_cache/
+Backend/**/__pycache__/
+*.pyc

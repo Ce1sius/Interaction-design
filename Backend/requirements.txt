@@ -1,0 +1,10 @@
+fastapi>=0.110
+uvicorn[standard]>=0.27
+httpx>=0.27
+openai>=1.30
+pypdf>=4.2
+pytest>=8.0
+playwright>=1.43
+pillow>=10.0
+pytesseract>=0.3.10
+pymupdf>=1.24
