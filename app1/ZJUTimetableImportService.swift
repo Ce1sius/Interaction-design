@@ -241,6 +241,7 @@ struct ZJULearningRemoteCourse: Identifiable, Equatable {
 enum ZJULearningMaterialService {
     private static let baseURL = URL(string: "https://courses.zju.edu.cn")!
     private static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 26_5 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148"
+    static let authenticationURL = URL(string: "https://courses.zju.edu.cn/user/courses")!
 
     static func materials(for course: Course) async throws -> [CourseMaterial] {
         let cookies = await authenticationCookies()
@@ -282,6 +283,24 @@ enum ZJULearningMaterialService {
         return fileURL
     }
 
+    static func cachedFileURL(for material: CourseMaterial) -> URL? {
+        if let localFilePath = material.localFilePath {
+            let fileURL = URL(fileURLWithPath: localFilePath)
+            if FileManager.default.fileExists(atPath: fileURL.path) {
+                return fileURL
+            }
+        }
+        guard material.remoteID != nil else { return nil }
+        do {
+            let directory = try materialsDirectory(for: material.remoteCourseName ?? "LearningMaterials")
+            let fileName = sanitizedFileName(material.localFileName ?? material.title)
+            let fileURL = directory.appendingPathComponent(fileName)
+            return FileManager.default.fileExists(atPath: fileURL.path) ? fileURL : nil
+        } catch {
+            return nil
+        }
+    }
+
     private static func authenticationCookies() async -> [HTTPCookie] {
         await withCheckedContinuation { continuation in
             WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
@@ -301,32 +320,41 @@ enum ZJULearningMaterialService {
     }
 
     private static func makeSession(cookies: [HTTPCookie]) -> URLSession {
-        let storage = HTTPCookieStorage()
+        let storage = HTTPCookieStorage.shared
         cookies.forEach { storage.setCookie($0) }
         let configuration = URLSessionConfiguration.default
         configuration.httpCookieStorage = storage
         configuration.httpCookieAcceptPolicy = .always
         configuration.httpShouldSetCookies = true
+        configuration.httpAdditionalHeaders = HTTPCookie.requestHeaderFields(with: cookies)
         configuration.timeoutIntervalForRequest = 18
         configuration.timeoutIntervalForResource = 60
         return URLSession(configuration: configuration)
     }
 
     private static func warmLearningSession(session: URLSession) async throws {
-        var request = URLRequest(url: baseURL.appendingPathComponent("user/courses"))
+        var request = URLRequest(url: URL(string: "https://courses.zju.edu.cn/user/courses")!)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", forHTTPHeaderField: "Accept")
         do {
-            let (_, response) = try await session.data(for: request)
+            let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw ZJULearningMaterialImportError.malformedResponse
             }
-            guard (200..<400).contains(httpResponse.statusCode) else {
-                throw ZJULearningMaterialImportError.requestFailed("HTTP \(httpResponse.statusCode)")
+            if (300..<400).contains(httpResponse.statusCode) || httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                throw ZJULearningMaterialImportError.sessionExpired
+            }
+            if let text = String(data: data, encoding: .utf8),
+               text.contains("统一身份认证") || text.contains("cas/login") {
+                throw ZJULearningMaterialImportError.sessionExpired
+            }
+            guard httpResponse.statusCode < 500 else {
+                throw ZJULearningMaterialImportError.requestFailed("user/courses HTTP \(httpResponse.statusCode): \(responseSnippet(from: data))")
             }
         } catch let error as ZJULearningMaterialImportError {
             throw error
         } catch {
-            throw ZJULearningMaterialImportError.requestFailed(error.localizedDescription)
+            throw ZJULearningMaterialImportError.requestFailed("user/courses: \(error.localizedDescription)")
         }
     }
 
@@ -336,7 +364,7 @@ enum ZJULearningMaterialService {
         var results: [ZJULearningRemoteCourse] = []
 
         repeat {
-            let json = try await jsonObject(url: myCoursesURL(page: page), session: session)
+            let json = try await firstValidCourseListJSON(page: page, session: session)
             guard let courses = json["courses"] as? [[String: Any]] else {
                 if looksLikeLoginPage(json) {
                     throw ZJULearningMaterialImportError.sessionExpired
@@ -363,7 +391,7 @@ enum ZJULearningMaterialService {
     }
 
     private static func activityUploads(courseID: Int64, courseName: String, session: URLSession) async throws -> [CourseMaterial] {
-        let url = baseURL.appendingPathComponent("api/courses/\(courseID)/activities")
+        let url = URL(string: "https://courses.zju.edu.cn/api/courses/\(courseID)/activities")!
         let json = try await jsonObject(url: url, session: session)
         guard let activities = json["activities"] as? [[String: Any]] else {
             throw ZJULearningMaterialImportError.malformedResponse
@@ -398,10 +426,10 @@ enum ZJULearningMaterialService {
     }
 
     private static func downloadData(remoteID: Int64, referenceID: Int64, session: URLSession) async throws -> Data {
-        if let data = try await dataIfAvailable(url: baseURL.appendingPathComponent("api/uploads/reference/\(referenceID)/blob"), session: session) {
+        if let data = try await dataIfAvailable(url: URL(string: "https://courses.zju.edu.cn/api/uploads/reference/\(referenceID)/blob")!, session: session) {
             return data
         }
-        if let data = try await dataIfAvailable(url: baseURL.appendingPathComponent("api/uploads/\(remoteID)/blob"), session: session) {
+        if let data = try await dataIfAvailable(url: URL(string: "https://courses.zju.edu.cn/api/uploads/\(remoteID)/blob")!, session: session) {
             return data
         }
         throw ZJULearningMaterialImportError.downloadUnavailable
@@ -421,7 +449,7 @@ enum ZJULearningMaterialService {
             if (300..<400).contains(httpResponse.statusCode) || httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                 return nil
             }
-            throw ZJULearningMaterialImportError.requestFailed("HTTP \(httpResponse.statusCode)")
+            throw ZJULearningMaterialImportError.requestFailed("\(url.lastPathComponent) HTTP \(httpResponse.statusCode): \(responseSnippet(from: data))")
         } catch let error as ZJULearningMaterialImportError {
             throw error
         } catch {
@@ -433,6 +461,8 @@ enum ZJULearningMaterialService {
         var request = URLRequest(url: url)
         request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         request.setValue("application/json, text/plain, */*", forHTTPHeaderField: "Accept")
+        request.setValue("XMLHttpRequest", forHTTPHeaderField: "X-Requested-With")
+        request.setValue("https://courses.zju.edu.cn/user/courses", forHTTPHeaderField: "Referer")
         do {
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
@@ -442,7 +472,7 @@ enum ZJULearningMaterialService {
                 if (300..<400).contains(httpResponse.statusCode) || httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
                     throw ZJULearningMaterialImportError.sessionExpired
                 }
-                throw ZJULearningMaterialImportError.requestFailed("HTTP \(httpResponse.statusCode)")
+                throw ZJULearningMaterialImportError.requestFailed("\(url.lastPathComponent) HTTP \(httpResponse.statusCode): \(responseSnippet(from: data))")
             }
             if let text = String(data: data, encoding: .utf8),
                text.contains("统一身份认证") || text.contains("cas/login") {
@@ -460,26 +490,23 @@ enum ZJULearningMaterialService {
     }
 
     private static func myCoursesURL(page: Int) -> URL {
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/my-courses"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "conditions", value: #"{"status":["ongoing","notStarted"],"keyword":"","classify_type":"recently_started","display_studio_list":false}"#),
-            URLQueryItem(name: "fields", value: "id,name,academic_year_id,semester_id"),
-            URLQueryItem(name: "page", value: "\(page)"),
-            URLQueryItem(name: "page_size", value: "100"),
-            URLQueryItem(name: "showScorePassedStatus", value: "false")
-        ]
-        return components.url!
+        URL(string: "https://courses.zju.edu.cn/api/my-courses?conditions=%7B%22status%22:%5B%22ongoing%22,%22notStarted%22%5D,%22keyword%22:%22%22,%22classify_type%22:%22recently_started%22,%22display_studio_list%22:false%7D&fields=id,name,course_code,department(id,name),grade(id,name),klass(id,name),course_type,cover,small_cover,start_date,end_date,is_started,is_closed,academic_year_id,semester_id,credit,compulsory,second_name,display_name,created_user(id,name),org(is_enterprise_or_organization),org_id,public_scope,audit_status,audit_remark,can_withdraw_course,imported_from,allow_clone,is_instructor,is_team_teaching,is_default_course_cover,instructors(id,name,email,avatar_small_url),course_attributes(teaching_class_name,is_during_publish_period,copy_status,tip,data),user_stick_course_record(id),classroom_schedule&page=\(page)&page_size=100&showScorePassedStatus=false")!
+    }
+
+    private static func fallbackMyCoursesURL(page: Int) -> URL {
+        URL(string: "https://courses.zju.edu.cn/api/my-courses?conditions=%7B%22status%22:%5B%22ongoing%22,%22notStarted%22%5D,%22keyword%22:%22%22,%22classify_type%22:%22recently_started%22,%22display_studio_list%22:false%7D&fields=id,name,academic_year_id,semester_id&page=\(page)&page_size=100&showScorePassedStatus=false")!
+    }
+
+    private static func firstValidCourseListJSON(page: Int, session: URLSession) async throws -> [String: Any] {
+        do {
+            return try await jsonObject(url: myCoursesURL(page: page), session: session)
+        } catch {
+            return try await jsonObject(url: fallbackMyCoursesURL(page: page), session: session)
+        }
     }
 
     private static func homeworkURL(courseID: Int64, page: Int) -> URL {
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/courses/\(courseID)/homework-activities"), resolvingAgainstBaseURL: false)!
-        components.queryItems = [
-            URLQueryItem(name: "conditions", value: #"{"itemsSortBy":{"predicate":"module","reverse":false}}"#),
-            URLQueryItem(name: "page", value: "\(page)"),
-            URLQueryItem(name: "page_size", value: "20"),
-            URLQueryItem(name: "reloadPage", value: "false")
-        ]
-        return components.url!
+        URL(string: "https://courses.zju.edu.cn/api/courses/\(courseID)/homework-activities?conditions=%7B%22itemsSortBy%22:%7B%22predicate%22:%22module%22,%22reverse%22:false%7D%7D&page=\(page)&page_size=20&reloadPage=false")!
     }
 
     private static func remoteCourse(from json: [String: Any]) -> ZJULearningRemoteCourse? {
@@ -566,6 +593,12 @@ enum ZJULearningMaterialService {
     private static func byteCountText(_ size: Int64?) -> String {
         guard let size else { return "大小未知" }
         return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+    }
+
+    private static func responseSnippet(from data: Data) -> String {
+        guard let text = String(data: data, encoding: .utf8) else { return "无可读响应正文" }
+        let normalized = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        return String(normalized.prefix(180))
     }
 
     private static func looksLikeLoginPage(_ json: [String: Any]) -> Bool {

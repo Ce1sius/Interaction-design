@@ -245,6 +245,7 @@ struct CourseMaterial: Identifiable, Codable, Equatable {
     var remoteCourseName: String? = nil
     var remoteSize: Int64? = nil
     var localFileName: String? = nil
+    var localFilePath: String? = nil
 }
 
 struct CourseHomework: Identifiable, Codable, Equatable {

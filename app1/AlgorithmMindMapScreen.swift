@@ -17,6 +17,9 @@ struct AlgorithmMindMapScreen: View {
     @State private var isResourceHeaderCollapsed = false
     @State private var selectedPracticeResource: PracticeResource?
     @State private var didApplyInitialTopic = false
+    @State private var inlinePreviewItem: CourseMaterialPreviewItem?
+    @State private var downloadingMaterialID: UUID?
+    @State private var toast: String?
 
     init(course: Course? = nil, initialTopicTitle: String? = nil) {
         self.course = course
@@ -60,6 +63,12 @@ struct AlgorithmMindMapScreen: View {
         .onAppear {
             applyInitialTopicIfNeeded()
         }
+        .onChange(of: selectedResourceMode) { _, mode in
+            if mode != .courseware {
+                inlinePreviewItem = nil
+            }
+        }
+        .toast($toast)
     }
 
     private var resourceHeader: some View {
@@ -96,17 +105,11 @@ struct AlgorithmMindMapScreen: View {
             ZStack {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .fill(Color(light: "#3d302f", dark: "#211b1b"))
-                VStack(spacing: 8) {
-                    Image(systemName: selectedResourceMode == .replay ? "play.rectangle.fill" : "doc.richtext.fill")
-                        .font(.system(size: 26, weight: .semibold))
-                    Text(mediaTitle)
-                        .font(.system(size: 18, weight: .semibold))
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.78)
-                }
-                .foregroundStyle(.white.opacity(0.92))
+                resourceMediaContent
+                    .foregroundStyle(.white.opacity(0.92))
+                    .padding(12)
             }
-            .frame(height: 118)
+            .frame(height: resourceWindowHeight)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
@@ -307,6 +310,162 @@ struct AlgorithmMindMapScreen: View {
         let sourceTitle = selectedResourceMode == .replay ? "视频回放" : "课件预览"
         guard let course else { return sourceTitle }
         return "\(course.name) · \(sourceTitle)"
+    }
+
+    private var resourceWindowHeight: CGFloat {
+        selectedResourceMode == .courseware && inlinePreviewItem != nil ? 260 : 118
+    }
+
+    @ViewBuilder
+    private var resourceMediaContent: some View {
+        if selectedResourceMode == .courseware,
+           let inlinePreviewItem {
+            inlineCoursewarePreview(inlinePreviewItem)
+        } else if selectedResourceMode == .courseware,
+           let course,
+           !course.materials.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.richtext.fill")
+                    Text("\(course.name) · 真实课件")
+                        .font(.system(size: 15, weight: .semibold))
+                        .lineLimit(1)
+                    Spacer()
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(course.materials.prefix(8)) { material in
+                            coursewareChip(material)
+                        }
+                    }
+                }
+            }
+        } else {
+            VStack(spacing: 8) {
+                Image(systemName: selectedResourceMode == .replay ? "play.rectangle.fill" : "doc.richtext.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                Text(mediaTitle)
+                    .font(.system(size: 18, weight: .semibold))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.78)
+            }
+        }
+    }
+
+    private func inlineCoursewarePreview(_ item: CourseMaterialPreviewItem) -> some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: "doc.text.magnifyingglass")
+                Text(item.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .lineLimit(1)
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.88)) {
+                        inlinePreviewItem = nil
+                    }
+                } label: {
+                    Label("返回课件", systemImage: "xmark.circle.fill")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("返回课件列表")
+            }
+            .foregroundStyle(.white.opacity(0.92))
+
+            CourseMaterialQuickLook(item: item)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        }
+    }
+
+    private func coursewareChip(_ material: CourseMaterial) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(material.title)
+                .font(.system(size: 12, weight: .semibold))
+                .lineLimit(2)
+                .frame(width: 126, alignment: .leading)
+            HStack(spacing: 6) {
+                Button {
+                    preview(material)
+                } label: {
+                    Text("预览")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.white.opacity(0.2))
+                .disabled(downloadingMaterialID != nil)
+
+                Button {
+                    download(material)
+                } label: {
+                    if downloadingMaterialID == material.id {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else {
+                        Text(isMaterialCached(material) ? "已下" : "下载")
+                    }
+                }
+                .buttonStyle(.bordered)
+                .tint(.white.opacity(0.75))
+                .disabled(downloadingMaterialID != nil || material.remoteID == nil)
+            }
+            .font(.system(size: 11, weight: .semibold))
+        }
+        .padding(8)
+        .frame(width: 142, height: 82, alignment: .leading)
+        .background(.white.opacity(0.13))
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func download(_ material: CourseMaterial) {
+        guard material.remoteID != nil else {
+            toast = "该课件没有远端下载地址。"
+            return
+        }
+        guard downloadingMaterialID == nil else { return }
+        downloadingMaterialID = material.id
+        Task {
+            do {
+                let fileURL = try await ZJULearningMaterialService.download(material)
+                downloadingMaterialID = nil
+                toast = "已下载到 \(fileURL.lastPathComponent)"
+            } catch {
+                downloadingMaterialID = nil
+                toast = error.localizedDescription
+            }
+        }
+    }
+
+    private func isMaterialCached(_ material: CourseMaterial) -> Bool {
+        ZJULearningMaterialService.cachedFileURL(for: material) != nil
+    }
+
+    private func preview(_ material: CourseMaterial) {
+        if let fileURL = ZJULearningMaterialService.cachedFileURL(for: material) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                inlinePreviewItem = CourseMaterialPreviewItem(url: fileURL, title: material.title)
+            }
+            return
+        }
+        guard material.remoteID != nil else {
+            toast = "该课件还没有本地文件，无法预览。"
+            return
+        }
+        guard downloadingMaterialID == nil else { return }
+        downloadingMaterialID = material.id
+        Task {
+            do {
+                let fileURL = try await ZJULearningMaterialService.download(material)
+                downloadingMaterialID = nil
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.88)) {
+                    inlinePreviewItem = CourseMaterialPreviewItem(url: fileURL, title: material.title)
+                }
+            } catch {
+                downloadingMaterialID = nil
+                toast = error.localizedDescription
+            }
+        }
     }
 
     private func applyInitialTopicIfNeeded() {

@@ -1,6 +1,7 @@
 import SwiftUI
 import Combine
 import WebKit
+import QuickLook
 
 struct MainTabView: View {
     @ObservedObject var store: PathMateStore
@@ -2127,6 +2128,13 @@ struct CourseMaterialsView: View {
     @State private var toast: String?
     @State private var isSyncingMaterials = false
     @State private var downloadingMaterialID: UUID?
+    @State private var isLearningLoginVisible = false
+    @State private var learningLoginURL: URL?
+    @State private var isLearningLoginLoading = false
+    @State private var learningLoginReloadID = UUID()
+    @State private var learningLoginMessage: String?
+    @State private var materialSyncDiagnostic: String?
+    @State private var previewItem: CourseMaterialPreviewItem?
 
     var body: some View {
         Group {
@@ -2152,10 +2160,13 @@ struct CourseMaterialsView: View {
                                     .font(.system(size: 14))
                                     .foregroundStyle(PMColor.slate)
                                 HStack {
-                                    Button("查看") {
-                                        toast = "已打开「\(material.title)」预览"
+                                    Button {
+                                        preview(material, for: course)
+                                    } label: {
+                                        Text(material.remoteID == nil ? "查看" : "预览")
                                     }
                                     .buttonStyle(.bordered)
+                                    .disabled(downloadingMaterialID != nil)
                                     Button {
                                         download(material, for: course)
                                     } label: {
@@ -2196,6 +2207,9 @@ struct CourseMaterialsView: View {
                     }
                 }
                 .toast($toast)
+                .sheet(item: $previewItem) { item in
+                    CourseMaterialPreviewSheet(item: item)
+                }
             } else {
                 EmptyStateView(systemImage: "folder", title: "课程不存在", message: "无法查看课件。")
                     .padding()
@@ -2214,6 +2228,13 @@ struct CourseMaterialsView: View {
             HStack {
                 TagChip(title: course.materials.filter { $0.remoteID != nil }.isEmpty ? "未同步" : "已接入", systemImage: nil, tint: PMColor.primary)
                 Spacer()
+                Button(isLearningLoginVisible ? "收起登录" : "登录学在浙大") {
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                        isLearningLoginVisible.toggle()
+                    }
+                }
+                .buttonStyle(.bordered)
+                .tint(PMColor.primary)
                 Button {
                     syncMaterials(for: course)
                 } label: {
@@ -2223,9 +2244,71 @@ struct CourseMaterialsView: View {
                 .tint(PMColor.primary)
                 .disabled(isSyncingMaterials)
             }
+            if let learningLoginMessage {
+                InfoBox(title: "登录状态", message: learningLoginMessage, icon: "info.circle.fill", tint: PMColor.primary)
+            }
+            if let materialSyncDiagnostic {
+                InfoBox(title: "同步诊断", message: materialSyncDiagnostic, icon: "exclamationmark.triangle.fill", tint: PMColor.warning)
+            }
+            if isLearningLoginVisible {
+                learningLoginPanel(course)
+            }
         }
         .padding(16)
         .pathCardStyle()
+    }
+
+    private func learningLoginPanel(_ course: Course) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("浙江大学统一身份认证")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(PMColor.charcoal)
+                    Text("这里会先打开学在浙大，再由学在浙大跳转到统一身份认证。登录完成后点击下方同步课件即可读取「\(course.name)」。")
+                        .font(.system(size: 12))
+                        .foregroundStyle(PMColor.steel)
+                }
+                Spacer()
+                Button {
+                    learningLoginMessage = nil
+                    learningLoginReloadID = UUID()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("重新加载登录页面")
+            }
+
+            ZStack {
+                AcademicSystemAuthenticationWebView(
+                    url: ZJULearningMaterialService.authenticationURL,
+                    reloadID: learningLoginReloadID,
+                    currentURL: $learningLoginURL,
+                    isLoading: $isLearningLoginLoading,
+                    onNavigationFinished: handleLearningNavigationFinished,
+                    onNavigationError: handleLearningNavigationError
+                )
+                .frame(height: 430)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(PMColor.hairline, lineWidth: 1)
+                }
+
+                if isLearningLoginLoading {
+                    ProgressView("正在加载登录页面...")
+                        .padding(12)
+                        .background(.regularMaterial)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+
+            Text("当前页面：\(learningLoginURL?.host ?? "统一身份认证")")
+                .font(.system(size: 12))
+                .foregroundStyle(PMColor.steel)
+        }
+        .padding(.top, 4)
     }
 
     private func syncMaterials(for course: Course) {
@@ -2236,12 +2319,21 @@ struct CourseMaterialsView: View {
                 let materials = try await ZJULearningMaterialService.materials(for: course)
                 let insertedCount = store.mergeMaterials(materials, into: course.id)
                 isSyncingMaterials = false
+                materialSyncDiagnostic = nil
                 toast = insertedCount == 0
                     ? "学在浙大课件已是最新"
                     : "已导入 \(insertedCount) 个学在浙大课件"
             } catch {
                 isSyncingMaterials = false
-                toast = error.localizedDescription
+                let message = error.localizedDescription
+                materialSyncDiagnostic = message
+                toast = message
+                if shouldRevealLearningLogin(for: error) {
+                    learningLoginMessage = "请在下方完成统一身份认证，进入学在浙大后再同步课件。"
+                    withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                        isLearningLoginVisible = true
+                    }
+                }
             }
         }
     }
@@ -2258,13 +2350,125 @@ struct CourseMaterialsView: View {
         Task {
             do {
                 let fileURL = try await ZJULearningMaterialService.download(material)
-                store.markMaterialDownloaded(courseID: course.id, materialID: material.id)
+                store.markMaterialDownloaded(courseID: course.id, materialID: material.id, localFileURL: fileURL)
                 downloadingMaterialID = nil
                 toast = "已下载到 \(fileURL.lastPathComponent)"
             } catch {
                 downloadingMaterialID = nil
                 toast = error.localizedDescription
             }
+        }
+    }
+
+    private func preview(_ material: CourseMaterial, for course: Course) {
+        if let fileURL = ZJULearningMaterialService.cachedFileURL(for: material) {
+            previewItem = CourseMaterialPreviewItem(url: fileURL, title: material.title)
+            return
+        }
+        guard material.remoteID != nil else {
+            toast = "该课件还没有本地文件，无法预览。"
+            return
+        }
+        guard downloadingMaterialID == nil else { return }
+        downloadingMaterialID = material.id
+        Task {
+            do {
+                let fileURL = try await ZJULearningMaterialService.download(material)
+                store.markMaterialDownloaded(courseID: course.id, materialID: material.id, localFileURL: fileURL)
+                downloadingMaterialID = nil
+                previewItem = CourseMaterialPreviewItem(url: fileURL, title: material.title)
+            } catch {
+                downloadingMaterialID = nil
+                toast = error.localizedDescription
+            }
+        }
+    }
+
+    private func handleLearningNavigationFinished(_ url: URL) {
+        let host = url.host ?? ""
+        if host.contains("courses.zju.edu.cn") {
+            learningLoginMessage = "已进入学在浙大，可以点击「同步课件」获取当前课程课件。"
+        } else if host.contains("zjuam.zju.edu.cn") {
+            learningLoginMessage = "请继续完成统一身份认证。"
+        }
+    }
+
+    private func handleLearningNavigationError(_ error: Error) {
+        let nsError = error as NSError
+        guard nsError.domain != NSURLErrorDomain || nsError.code != NSURLErrorCancelled else { return }
+        learningLoginMessage = "\(error.localizedDescription) 可点击右上角重新加载。"
+    }
+
+    private func shouldRevealLearningLogin(for error: Error) -> Bool {
+        guard let error = error as? ZJULearningMaterialImportError else { return false }
+        switch error {
+        case .notAuthenticated, .sessionExpired:
+            return true
+        case .noMatchingCourse, .noMaterials, .malformedResponse, .downloadUnavailable, .requestFailed:
+            return false
+        }
+    }
+}
+
+struct CourseMaterialPreviewItem: Identifiable {
+    let id = UUID()
+    let url: URL
+    let title: String
+}
+
+struct CourseMaterialPreviewSheet: View {
+    let item: CourseMaterialPreviewItem
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            CourseMaterialQuickLook(item: item)
+                .ignoresSafeArea(edges: .bottom)
+                .navigationTitle(item.title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("完成") {
+                            dismiss()
+                        }
+                    }
+                }
+        }
+    }
+}
+
+struct CourseMaterialQuickLook: UIViewControllerRepresentable {
+    let item: CourseMaterialPreviewItem
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(item: item)
+    }
+
+    func makeUIViewController(context: Context) -> QLPreviewController {
+        let controller = QLPreviewController()
+        controller.dataSource = context.coordinator
+        return controller
+    }
+
+    func updateUIViewController(_ controller: QLPreviewController, context: Context) {
+        context.coordinator.item = item
+        controller.reloadData()
+    }
+
+    final class Coordinator: NSObject, QLPreviewControllerDataSource {
+        var item: CourseMaterialPreviewItem
+
+        init(item: CourseMaterialPreviewItem) {
+            self.item = item
+        }
+
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int {
+            1
+        }
+
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem {
+            item.url as NSURL
         }
     }
 }

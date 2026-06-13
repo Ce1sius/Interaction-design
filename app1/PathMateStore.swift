@@ -639,11 +639,14 @@ final class PathMateStore: ObservableObject {
         save()
     }
 
-    func markMaterialDownloaded(courseID: UUID, materialID: UUID) {
+    func markMaterialDownloaded(courseID: UUID, materialID: UUID, localFileURL: URL? = nil) {
         guard let courseIndex = courses.firstIndex(where: { $0.id == courseID }),
               let materialIndex = courses[courseIndex].materials.firstIndex(where: { $0.id == materialID })
         else { return }
         courses[courseIndex].materials[materialIndex].isDownloaded = true
+        if let localFileURL {
+            courses[courseIndex].materials[materialIndex].localFilePath = localFileURL.path
+        }
         save()
     }
 
