@@ -22,7 +22,7 @@ from app.crawler.static_html_adapter import StaticHTMLSourceAdapter
 from app.crawler.zju_learning_adapter import ZJULearningSourceAdapter
 from app.crawler.url_normalizer import normalize_url
 from app.documents.remote_fetcher import RemoteDocumentFetcher
-from app.documents.remote_fetcher import extract_pdf_text
+from app.documents.remote_fetcher import extract_course_document_text
 from app.indexing.material_sync_service import CourseMaterialSyncService
 from app.indexing.provider import LocalKeywordIndexProvider
 from app.mindmap.generation_service import MindMapGenerationError, MindMapGenerationService
@@ -119,6 +119,9 @@ async def sync_materials(
         raise HTTPException(status_code=404, detail="course not found")
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    if result.stats.discovered == 0:
+        detail = "; ".join(result.errors) if result.errors else "no ZJU Learning courseware uploads were discovered"
+        raise HTTPException(status_code=422, detail=detail)
     return result.stats
 
 
@@ -138,23 +141,25 @@ async def import_downloaded_document(
     raw = await request.body()
     if len(raw) > settings.max_pdf_bytes:
         raise HTTPException(status_code=413, detail="PDF exceeds configured size limit")
-    if not raw.startswith(b"%PDF"):
-        raise HTTPException(status_code=400, detail="uploaded document is not a PDF")
-
     normalized_url = normalize_url(sourceUrl)
     content_hash = hashlib.sha256(raw).hexdigest()
-    text = extract_pdf_text(
-        raw,
-        enable_ocr=settings.enable_ocr,
-        ocr_language=settings.ocr_language,
-        ocr_max_pages=settings.ocr_max_pages,
-    )
+    try:
+        text = extract_course_document_text(
+            raw,
+            content_type=request.headers.get("content-type"),
+            source_url=normalized_url,
+            enable_ocr=settings.enable_ocr,
+            ocr_language=settings.ocr_language,
+            ocr_max_pages=settings.ocr_max_pages,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     document = repo.upsert_document(
         course_id=course_id,
         source_url=normalized_url,
         normalized_url=normalized_url,
         title=title,
-        content_type="application/pdf",
+        content_type=request.headers.get("content-type") or "application/octet-stream",
         file_size=len(raw),
         etag=None,
         last_modified=None,
@@ -168,7 +173,7 @@ async def import_downloaded_document(
         source_url=normalized_url,
         normalized_url=normalized_url,
         title=document.title,
-        content_type="application/pdf",
+        content_type=request.headers.get("content-type") or "application/octet-stream",
         file_size=len(raw),
         etag=None,
         last_modified=None,

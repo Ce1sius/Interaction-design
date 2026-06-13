@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import io
+import re
+import zipfile
 from dataclasses import dataclass
+from html import unescape
 from urllib.parse import urljoin
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -47,8 +51,14 @@ class RemoteDocumentFetcher:
         self.ocr_language = ocr_language
         self.ocr_max_pages = ocr_max_pages
 
-    async def probe(self, url: str, allowed_domains: list[str], auth_headers: dict[str, str] | None = None) -> DocumentProbe:
-        validator = DomainValidator(allowed_domains)
+    async def probe(
+        self,
+        url: str,
+        allowed_domains: list[str],
+        auth_headers: dict[str, str] | None = None,
+        allow_private_resolved_hosts: list[str] | tuple[str, ...] = (),
+    ) -> DocumentProbe:
+        validator = DomainValidator(allowed_domains, allow_private_resolved_hosts=allow_private_resolved_hosts)
         async with httpx.AsyncClient(timeout=self.timeout_seconds, trust_env=False) as client:
             response = await self._request_with_validated_redirects(
                 client,
@@ -76,8 +86,14 @@ class RemoteDocumentFetcher:
                 last_modified=response.headers.get("last-modified"),
             )
 
-    async def fetch_pdf(self, url: str, allowed_domains: list[str], auth_headers: dict[str, str] | None = None) -> FetchedDocument:
-        validator = DomainValidator(allowed_domains)
+    async def fetch_pdf(
+        self,
+        url: str,
+        allowed_domains: list[str],
+        auth_headers: dict[str, str] | None = None,
+        allow_private_resolved_hosts: list[str] | tuple[str, ...] = (),
+    ) -> FetchedDocument:
+        validator = DomainValidator(allowed_domains, allow_private_resolved_hosts=allow_private_resolved_hosts)
         async with httpx.AsyncClient(timeout=self.timeout_seconds, trust_env=False) as client:
             response = await self._request_with_validated_redirects(
                 client,
@@ -97,14 +113,12 @@ class RemoteDocumentFetcher:
                 if len(data) > self.max_bytes:
                     raise ValueError("PDF exceeds configured size limit")
             raw = bytes(data)
-            if not raw.startswith(b"%PDF"):
-                content_type_l = (content_type or "").lower()
-                if "pdf" not in content_type_l:
-                    raise ValueError("remote content is not a PDF")
 
             content_hash = hashlib.sha256(raw).hexdigest()
-            text = extract_pdf_text(
+            text = extract_course_document_text(
                 raw,
+                content_type=content_type,
+                source_url=str(response.url),
                 enable_ocr=self.enable_ocr,
                 ocr_language=self.ocr_language,
                 ocr_max_pages=self.ocr_max_pages,
@@ -196,3 +210,61 @@ def extract_pdf_text(
         from app.documents.ocr import ocr_pdf_pages
 
         return ocr_pdf_pages(raw_pdf, language=ocr_language, max_pages=ocr_max_pages)[:max_chars]
+
+
+def extract_course_document_text(
+    raw: bytes,
+    *,
+    content_type: str | None = None,
+    source_url: str = "",
+    enable_ocr: bool = False,
+    ocr_language: str = "chi_sim+eng",
+    ocr_max_pages: int = 6,
+) -> str:
+    if raw.startswith(b"%PDF") or _looks_like_pdf(content_type, source_url):
+        return extract_pdf_text(
+            raw,
+            enable_ocr=enable_ocr,
+            ocr_language=ocr_language,
+            ocr_max_pages=ocr_max_pages,
+        )
+    if _looks_like_openxml(raw, content_type, source_url):
+        return extract_openxml_text(raw)
+    return ""
+
+
+def extract_openxml_text(raw: bytes, max_chars: int = 80_000) -> str:
+    try:
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            names = archive.namelist()
+            if any(name.startswith("ppt/slides/slide") and name.endswith(".xml") for name in names):
+                slide_names = sorted(
+                    name for name in names if name.startswith("ppt/slides/slide") and name.endswith(".xml")
+                )
+                pieces = []
+                for index, name in enumerate(slide_names, start=1):
+                    text = _xml_text(archive.read(name).decode("utf-8", errors="ignore"))
+                    if text:
+                        pieces.append(f"[slide {index}]\n{text}")
+                return "\n\n".join(pieces)[:max_chars]
+            if "word/document.xml" in names:
+                return _xml_text(archive.read("word/document.xml").decode("utf-8", errors="ignore"))[:max_chars]
+    except zipfile.BadZipFile:
+        pass
+    raise ValueError("remote content is not a supported course document")
+
+
+def _xml_text(xml: str) -> str:
+    text = re.sub(r"<[^>]+>", " ", xml)
+    text = unescape(text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _looks_like_pdf(content_type: str | None, source_url: str) -> bool:
+    lowered = f"{content_type or ''} {urlsplit(source_url).path}".lower()
+    return "pdf" in lowered
+
+
+def _looks_like_openxml(raw: bytes, content_type: str | None, source_url: str) -> bool:
+    lowered = f"{content_type or ''} {urlsplit(source_url).path}".lower()
+    return raw.startswith(b"PK") or any(token in lowered for token in ("officedocument", "pptx", "docx"))

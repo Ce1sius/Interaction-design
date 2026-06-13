@@ -58,18 +58,29 @@ class CourseMaterialSyncService:
         discovered_urls = {normalize_url(link) for link in discovery.links}
 
         self.index_provider.create_course_index(course_id)
+        allow_private_resolved_hosts = _private_dns_allowed_hosts(course, request)
         for link in discovery.links:
             normalized = normalize_url(link)
             existing = self.course_repository.get_document_by_url(course_id, normalized)
             try:
                 auth_headers = auth.request_headers()
-                probe = await self.fetcher.probe(normalized, course.allowedDomains, auth_headers=auth_headers)
+                probe = await self.fetcher.probe(
+                    normalized,
+                    course.allowedDomains,
+                    auth_headers=auth_headers,
+                    allow_private_resolved_hosts=allow_private_resolved_hosts,
+                )
                 if existing and _metadata_unchanged(existing, probe.etag, probe.last_modified, probe.file_size):
                     self.course_repository.touch_document_checked(course_id, normalized)
                     stats.unchanged += 1
                     continue
 
-                fetched = await self.fetcher.fetch_pdf(normalized, course.allowedDomains, auth_headers=auth_headers)
+                fetched = await self.fetcher.fetch_pdf(
+                    normalized,
+                    course.allowedDomains,
+                    auth_headers=auth_headers,
+                    allow_private_resolved_hosts=allow_private_resolved_hosts,
+                )
                 title = (discovery.titles or {}).get(normalized)
                 document = self.course_repository.upsert_document(
                     course_id=course_id,
@@ -163,3 +174,9 @@ def _metadata_unchanged(existing, etag: str | None, last_modified: str | None, f
 def _allowed_domains_cover(host: str, domains: list[str]) -> bool:
     normalized_host = host.lower()
     return any(normalized_host == domain.lower() or normalized_host.endswith(f".{domain.lower()}") for domain in domains)
+
+
+def _private_dns_allowed_hosts(course, request: SyncMaterialsRequest) -> tuple[str, ...]:
+    if request.adapter in {"zjuLearning", "auto"} and _allowed_domains_cover("courses.zju.edu.cn", course.allowedDomains):
+        return ("courses.zju.edu.cn",)
+    return ()

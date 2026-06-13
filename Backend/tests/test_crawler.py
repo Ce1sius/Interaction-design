@@ -1,6 +1,9 @@
 from app.crawler.domain_validator import DomainValidator, UnsafeURL
+from app.documents.remote_fetcher import extract_openxml_text
 from app.crawler.pdf_link_extractor import extract_pdf_links
 from app.crawler.url_normalizer import normalize_url
+import io
+import zipfile
 
 
 def test_extract_pdf_links_normalizes_relative_and_deduplicates():
@@ -42,3 +45,32 @@ def test_domain_validator_rejects_private_ip_host():
         assert "private or local IP" in str(exc)
     else:
         raise AssertionError("expected UnsafeURL")
+
+
+def test_domain_validator_can_allow_private_dns_for_trusted_host(monkeypatch):
+    def fake_getaddrinfo(*args, **kwargs):
+        return [(None, None, None, None, ("10.10.10.10", 0))]
+
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+
+    strict = DomainValidator(["courses.zju.edu.cn"])
+    try:
+        strict.validate_url("https://courses.zju.edu.cn/user/courses")
+    except UnsafeURL as exc:
+        assert "resolved private or local IP" in str(exc)
+    else:
+        raise AssertionError("expected UnsafeURL")
+
+    trusted = DomainValidator(["courses.zju.edu.cn"], allow_private_resolved_hosts=("courses.zju.edu.cn",))
+    trusted.validate_url("https://courses.zju.edu.cn/user/courses")
+
+
+def test_extract_openxml_text_reads_pptx_slides():
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr("ppt/slides/slide1.xml", "<p><a:t>概率论</a:t><a:t>随机变量</a:t></p>")
+
+    text = extract_openxml_text(buffer.getvalue())
+
+    assert "概率论" in text
+    assert "随机变量" in text

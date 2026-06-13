@@ -31,6 +31,7 @@ class Settings:
     max_pdf_bytes: int
     request_timeout_seconds: float
     llm_timeout_seconds: float
+    llm_max_tokens: int
     enable_ocr: bool
     ocr_language: str
     ocr_max_pages: int
@@ -58,6 +59,7 @@ def get_settings() -> Settings:
         max_pdf_bytes=int(os.getenv("MAX_PDF_BYTES", str(50 * 1024 * 1024))),
         request_timeout_seconds=float(os.getenv("REQUEST_TIMEOUT_SECONDS", "20")),
         llm_timeout_seconds=float(os.getenv("LLM_TIMEOUT_SECONDS", "120")),
+        llm_max_tokens=int(os.getenv("LLM_MAX_TOKENS", "8192")),
         enable_ocr=os.getenv("ENABLE_OCR", "false").strip().lower() in {"1", "true", "yes", "on"},
         ocr_language=os.getenv("OCR_LANGUAGE", "chi_sim+eng"),
         ocr_max_pages=int(os.getenv("OCR_MAX_PAGES", "6")),

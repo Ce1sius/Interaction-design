@@ -14,11 +14,19 @@ class UnsafeURL(ValueError):
 class DomainValidator:
     allowed_domains: tuple[str, ...]
     resolve_dns: bool = True
+    allow_private_resolved_hosts: tuple[str, ...] = ()
 
-    def __init__(self, allowed_domains: list[str] | tuple[str, ...], resolve_dns: bool = True):
+    def __init__(
+        self,
+        allowed_domains: list[str] | tuple[str, ...],
+        resolve_dns: bool = True,
+        allow_private_resolved_hosts: list[str] | tuple[str, ...] = (),
+    ):
         normalized = tuple(sorted({domain.strip().lower().lstrip(".") for domain in allowed_domains if domain.strip()}))
+        private_dns_hosts = tuple(sorted({host.strip().lower().lstrip(".") for host in allow_private_resolved_hosts if host.strip()}))
         object.__setattr__(self, "allowed_domains", normalized)
         object.__setattr__(self, "resolve_dns", resolve_dns)
+        object.__setattr__(self, "allow_private_resolved_hosts", private_dns_hosts)
 
     def validate_url(self, url: str) -> None:
         parts = urlsplit(url)
@@ -34,10 +42,13 @@ class DomainValidator:
         if self._is_ip_host_unsafe(host):
             raise UnsafeURL("direct private or local IP host is not allowed")
         if self.resolve_dns:
-            self._validate_dns_targets(host)
+            self._validate_dns_targets(host, allow_private=self._allows_private_dns(host))
 
     def _is_allowed_domain(self, host: str) -> bool:
         return any(host == domain or host.endswith(f".{domain}") for domain in self.allowed_domains)
+
+    def _allows_private_dns(self, host: str) -> bool:
+        return any(host == domain or host.endswith(f".{domain}") for domain in self.allow_private_resolved_hosts)
 
     @staticmethod
     def _is_ip_host_unsafe(host: str) -> bool:
@@ -48,7 +59,7 @@ class DomainValidator:
         return is_unsafe_ip(ip)
 
     @staticmethod
-    def _validate_dns_targets(host: str) -> None:
+    def _validate_dns_targets(host: str, allow_private: bool = False) -> None:
         try:
             infos = socket.getaddrinfo(host, None)
         except socket.gaierror as exc:
@@ -56,7 +67,7 @@ class DomainValidator:
         for info in infos:
             raw_ip = info[4][0]
             ip = ipaddress.ip_address(raw_ip)
-            if is_unsafe_ip(ip):
+            if is_unsafe_ip(ip) and not allow_private:
                 raise UnsafeURL("resolved private or local IP address is not allowed")
 
 

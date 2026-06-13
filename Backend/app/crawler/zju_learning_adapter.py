@@ -29,7 +29,7 @@ class ZJULearningSourceAdapter:
         self.timeout_seconds = timeout_seconds
 
     async def discover_pdf_links(self, course: CourseResponse, auth: AuthContext) -> DiscoveryResult:
-        validator = DomainValidator(course.allowedDomains)
+        validator = DomainValidator(course.allowedDomains, allow_private_resolved_hosts=("courses.zju.edu.cn",))
         validator.validate_url(BASE_URL)
         headers = {
             "Accept": "application/json, text/plain, */*",
@@ -53,8 +53,6 @@ class ZJULearningSourceAdapter:
         titles: dict[str, str] = {}
         seen: set[str] = set()
         for upload in uploads:
-            if not upload.title.lower().endswith(".pdf"):
-                continue
             normalized = normalize_url(upload.url)
             try:
                 validator.validate_url(normalized)

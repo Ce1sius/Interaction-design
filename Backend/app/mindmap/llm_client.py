@@ -59,16 +59,19 @@ class VLLMChatClient:
         self._model = models.data[0].id
         return self._model
 
-    def generate_json(self, messages: list[dict[str, str]], max_tokens: int = 4096) -> LLMJSONResult:
+    def generate_json(self, messages: list[dict[str, str]], max_tokens: int | None = None) -> LLMJSONResult:
         client = self._ensure_client()
         response = client.chat.completions.create(
             model=self.model_id(),
             messages=messages,
-            max_tokens=max_tokens,
+            max_tokens=max_tokens or self.settings.llm_max_tokens,
             response_format={"type": "json_object"},
             **NON_THINKING_SAMPLING,
         )
-        raw = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        raw = choice.message.content or ""
+        if choice.finish_reason == "length":
+            raise RuntimeError("model output was truncated; increase LLM_MAX_TOKENS or reduce mind-map breadth")
         try:
             parsed = json.loads(raw)
         except json.JSONDecodeError as exc:
