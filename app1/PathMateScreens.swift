@@ -7,6 +7,9 @@ struct MainTabView: View {
 
     var body: some View {
         TabView {
+            AlgorithmMindMapScreen()
+                .tabItem { Label("图谱", systemImage: "point.3.connected.trianglepath.dotted") }
+
             NextUpView(store: store)
                 .tabItem { Label("接下来", systemImage: "clock") }
 
@@ -481,6 +484,7 @@ struct LaunchPage: View {
 
 struct NextUpView: View {
     @ObservedObject var store: PathMateStore
+    @EnvironmentObject private var mateEventBus: MateEventBus
     @State private var now = Date()
     @State private var expandedIDs: Set<UUID> = []
     @State private var editingTask: PlanTask?
@@ -575,6 +579,7 @@ struct NextUpView: View {
                     TaskCard(task: task, courseName: store.course(id: task.courseID)?.name) {
                         withAnimation {
                             store.completeTask(task)
+                            mateEventBus.send(task.priority >= 4 ? .importantTaskCompleted : .taskCompleted)
                             toast = "已完成任务"
                         }
                     } onPostpone: {
@@ -675,12 +680,14 @@ struct NextUpView: View {
     }
 
     private func regenerate() {
+        mateEventBus.send(.schedulePlanningStarted)
         isGenerating = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             withAnimation {
                 store.regeneratePlan()
                 isGenerating = false
                 toast = "已生成新建议"
+                mateEventBus.send(.schedulePlanningCompleted)
             }
         }
     }
@@ -688,6 +695,7 @@ struct NextUpView: View {
 
 struct ScheduleView: View {
     @ObservedObject var store: PathMateStore
+    @EnvironmentObject private var mateEventBus: MateEventBus
     @State private var selectedDate = Date()
     @State private var selectedTerm = AcademicTerm.current()
     @State private var isCalendarExpanded = false
@@ -883,6 +891,7 @@ struct ScheduleView: View {
 
 struct TaskHubView: View {
     @ObservedObject var store: PathMateStore
+    @EnvironmentObject private var mateEventBus: MateEventBus
     @State private var expandedIDs: Set<UUID> = []
     @State private var editingTask: PlanTask?
     @State private var isGenerating = false
@@ -977,12 +986,13 @@ struct TaskHubView: View {
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(PMColor.ink)
             if store.tasks.isEmpty {
-                EmptyStateView(systemImage: "checklist", title: "暂无任务", message: "去日程页添加个人事项，或在学业页添加课程待办。")
+                EmptyStateView(systemImage: "checklist", title: "暂无任务", message: "去日程页添加个人事项，或进入课程详情添加课程待办。")
             } else {
                 ForEach(store.tasks.sorted { $0.weekday == $1.weekday ? $0.startMinute < $1.startMinute : $0.weekday < $1.weekday }) { task in
                     TaskCard(task: task, courseName: store.course(id: task.courseID)?.name) {
                         withAnimation {
                             store.completeTask(task)
+                            mateEventBus.send(task.priority >= 4 ? .importantTaskCompleted : .taskCompleted)
                             toast = "已完成任务"
                         }
                     } onPostpone: {
@@ -1009,12 +1019,14 @@ struct TaskHubView: View {
     }
 
     private func regenerate() {
+        mateEventBus.send(.schedulePlanningStarted)
         isGenerating = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
             withAnimation {
                 store.regeneratePlan()
                 isGenerating = false
                 toast = "已生成新建议"
+                mateEventBus.send(.schedulePlanningCompleted)
             }
         }
     }
@@ -1670,6 +1682,9 @@ struct SettingsView: View {
                     profileCard
                     appearanceCard
                     preferencesCard
+                    #if DEBUG
+                    mateDemoCard
+                    #endif
                     dataCard
                 }
                 .padding(16)
@@ -1774,6 +1789,37 @@ struct SettingsView: View {
         .pathCardStyle()
     }
 
+    #if DEBUG
+    private var mateDemoCard: some View {
+        NavigationLink {
+            MateDemoView()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(PMColor.primary)
+                    .frame(width: 38, height: 38)
+                    .background(PMColor.primary.opacity(0.12))
+                    .clipShape(Circle())
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Mate Demo")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(PMColor.charcoal)
+                    Text("调试悬浮角色、成长、最小化和事件反馈。")
+                        .font(.system(size: 13))
+                        .foregroundStyle(PMColor.slate)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .foregroundStyle(PMColor.muted)
+            }
+            .padding(16)
+            .pathCardStyle()
+        }
+        .buttonStyle(.plain)
+    }
+    #endif
+
     private func settingRow(_ title: String, _ value: String) -> some View {
         HStack {
             Text(title)
@@ -1796,6 +1842,7 @@ struct CourseDetailView: View {
     @State private var summaryExpanded = false
     @State private var editingCourse: Course?
     @State private var studyAidCourseID: UUID?
+    @State private var showingCourseTodo = false
     @State private var highlight = false
     @State private var toast: String?
 
@@ -1819,14 +1866,29 @@ struct CourseDetailView: View {
                 .navigationTitle(course.name)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
-                        Button("编辑") {
+                        Button {
+                            showingCourseTodo = true
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                        }
+                        .accessibilityLabel("添加课程待办")
+                    }
+                    ToolbarItem(placement: .secondaryAction) {
+                        Button {
                             editingCourse = course
+                        } label: {
+                            Label("编辑课程", systemImage: "pencil")
                         }
                     }
                 }
                 .sheet(item: $editingCourse) { course in
                     CourseEditorSheet(store: store, course: course) {
                         toast = "课程已更新"
+                    }
+                }
+                .sheet(isPresented: $showingCourseTodo) {
+                    CourseTodoScheduleSheet(store: store, course: course) {
+                        toast = "课程待办已加入日程"
                     }
                 }
                 .navigationDestination(item: $studyAidCourseID) { courseID in
@@ -3474,13 +3536,32 @@ struct AddPersonalEventSheet: View {
     }
 }
 
+private enum CourseTodoTitleOption: String, CaseIterable, Identifiable {
+    case quiz = "小测"
+    case assignment = "作业"
+    case presentation = "课程汇报"
+    case other = "其他"
+
+    var id: String { rawValue }
+
+    func title(for course: Course, customTitle: String) -> String {
+        switch self {
+        case .other:
+            return customTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+        case .quiz, .assignment, .presentation:
+            return "\(course.name)\(rawValue)"
+        }
+    }
+}
+
 struct CourseTodoScheduleSheet: View {
     @ObservedObject var store: PathMateStore
     @Environment(\.dismiss) private var dismiss
     var course: Course
     var onSaved: () -> Void
 
-    @State private var title: String
+    @State private var selectedTitleOption: CourseTodoTitleOption = .assignment
+    @State private var customTitle = ""
     @State private var selectedDate: Date
     @State private var isFixedSchedule = false
     @State private var recurrenceUnit: ScheduleRecurrenceUnit = .week
@@ -3495,7 +3576,6 @@ struct CourseTodoScheduleSheet: View {
         self.course = course
         self.onSaved = onSaved
         let defaultDate = Self.nextDate(for: course.weekday)
-        _title = State(initialValue: "\(course.name)课后待办")
         _selectedDate = State(initialValue: defaultDate)
         _recurrenceWeekday = State(initialValue: course.weekday)
         _recurrenceDayOfMonth = State(initialValue: Calendar.current.component(.day, from: defaultDate))
@@ -3507,7 +3587,17 @@ struct CourseTodoScheduleSheet: View {
         NavigationStack {
             Form {
                 Section("课程待办") {
-                    TextField("待办名称", text: $title)
+                    Picker("个人事项标题", selection: $selectedTitleOption) {
+                        ForEach(CourseTodoTitleOption.allCases) { option in
+                            Text(option.rawValue).tag(option)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    if selectedTitleOption == .other {
+                        TextField("自定义标题", text: $customTitle)
+                    } else {
+                        LabeledContent("待办名称", value: resolvedTitle)
+                    }
                     TimeWheelPickerRow(title: "开始时间", minute: $startMinute, allowedHours: 7...22, minuteStep: 5)
                     DurationWheelPickerRow(title: "时长", minutes: $durationMinutes, range: 15...240, minuteStep: 5)
                     Stepper("重要程度 \(priority)", value: $priority, in: 1...5)
@@ -3557,7 +3647,7 @@ struct CourseTodoScheduleSheet: View {
                     Button("保存") {
                         store.addCourseTodo(
                             for: course,
-                            title: title,
+                            title: resolvedTitle,
                             date: selectedDate,
                             recurrence: recurrence,
                             startMinute: startMinute,
@@ -3567,11 +3657,15 @@ struct CourseTodoScheduleSheet: View {
                         onSaved()
                         dismiss()
                     }
-                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(resolvedTitle.isEmpty)
                 }
             }
         }
         .presentationDetents([.medium, .large])
+    }
+
+    private var resolvedTitle: String {
+        selectedTitleOption.title(for: course, customTitle: customTitle)
     }
 
     private var recurrence: TaskRecurrence? {
