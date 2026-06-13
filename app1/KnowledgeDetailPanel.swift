@@ -4,11 +4,9 @@ struct KnowledgeDetailPanel: View {
     var detail: KnowledgeDetail
     var relatedNodes: [RelatedKnowledgeNode]
     var onRelatedNodeTap: (String) -> Void
+    var onPracticeResourceTap: (PracticeResource) -> Void = { _ in }
 
-    @EnvironmentObject private var mateViewModel: MateViewModel
-    @Environment(\.mateActions) private var mateActions
     @State private var agentQuestion = ""
-    @State private var selectedPracticeResource: PracticeResource?
     @State private var hasRead = false
     @State private var hasPracticed = false
     @State private var markedUnknown = false
@@ -26,11 +24,6 @@ struct KnowledgeDetailPanel: View {
             learningRecordCard
         }
         .padding(.bottom, 24)
-        .sheet(item: $selectedPracticeResource) { resource in
-            MateOverlayContainer(viewModel: mateViewModel, actions: mateActions) {
-                PracticeResourceDetailPage(resource: resource)
-            }
-        }
     }
 
     private var overviewCard: some View {
@@ -110,7 +103,7 @@ struct KnowledgeDetailPanel: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 10)], spacing: 10) {
                 ForEach(practiceResources) { resource in
                     Button {
-                        selectedPracticeResource = resource
+                        onPracticeResourceTap(resource)
                     } label: {
                         VStack(spacing: 8) {
                             Image(systemName: resource.systemImage)
@@ -334,7 +327,7 @@ struct KnowledgeDetailPanel: View {
     }
 }
 
-private struct PracticeResource: Identifiable {
+struct PracticeResource: Identifiable {
     var id: String { "\(category)-\(title)-\(description)" }
     var category: String
     var title: String
@@ -344,9 +337,9 @@ private struct PracticeResource: Identifiable {
     var tint: Color
 }
 
-private struct PracticeResourceDetailPage: View {
+struct PracticeResourceDetailPage: View {
     var resource: PracticeResource
-    @Environment(\.dismiss) private var dismiss
+    var onClose: () -> Void = {}
 
     var body: some View {
         NavigationStack {
@@ -386,11 +379,10 @@ private struct PracticeResourceDetailPage: View {
             .navigationTitle(resource.category)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("完成") { dismiss() }
+                    Button("完成", action: onClose)
                 }
             }
         }
-        .presentationDetents([.medium, .large])
     }
 }
 

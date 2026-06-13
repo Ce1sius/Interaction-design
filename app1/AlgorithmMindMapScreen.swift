@@ -12,27 +12,36 @@ struct AlgorithmMindMapScreen: View {
     @State private var selectedResourceMode: ResourceMode = .replay
     @State private var isMindMapExpanded = true
     @State private var isResourceHeaderCollapsed = false
+    @State private var selectedPracticeResource: PracticeResource?
 
     var body: some View {
-        VStack(spacing: 0) {
-            Group {
-                if isResourceHeaderCollapsed {
-                    collapsedResourceHeader
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                } else {
-                    resourceHeader
-                        .transition(.move(edge: .top).combined(with: .opacity))
+        ZStack {
+            VStack(spacing: 0) {
+                Group {
+                    if isResourceHeaderCollapsed {
+                        collapsedResourceHeader
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    } else {
+                        resourceHeader
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 10)
+                .padding(.bottom, isResourceHeaderCollapsed ? 6 : 10)
+
+                Divider()
+                    .overlay(PMColor.hairline)
+
+                lowerLearningArea
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .padding(.bottom, isResourceHeaderCollapsed ? 6 : 10)
 
-            Divider()
-                .overlay(PMColor.hairline)
-
-            lowerLearningArea
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            if let selectedPracticeResource {
+                practiceResourceOverlay(selectedPracticeResource)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(10)
+            }
         }
         .background(PMColor.softCanvas.ignoresSafeArea())
     }
@@ -204,8 +213,25 @@ struct AlgorithmMindMapScreen: View {
                     withAnimation(.spring(response: 0.34, dampingFraction: 0.84)) {
                         viewModel.jumpToNode(title: title)
                     }
+                } onPracticeResourceTap: { resource in
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        selectedPracticeResource = resource
+                    }
                 }
                 .padding(.horizontal, 16)
+            }
+        }
+    }
+
+    private func practiceResourceOverlay(_ resource: PracticeResource) -> some View {
+        ZStack {
+            PMColor.softCanvas
+                .ignoresSafeArea()
+
+            PracticeResourceDetailPage(resource: resource) {
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+                    selectedPracticeResource = nil
+                }
             }
         }
     }
