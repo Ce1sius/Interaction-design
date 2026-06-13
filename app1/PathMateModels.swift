@@ -144,11 +144,11 @@ struct AcademicTerm: Identifiable, Codable, Equatable, Hashable, Comparable {
     }
 
     var displayName: String {
-        "\(startYear)-\(startYear + 1) 学年\(season.rawValue)学期"
+        shortName
     }
 
     var shortName: String {
-        "\(startYear)-\(startYear + 1) \(season.rawValue)"
+        String(format: "%02d-%02d%@", startYear % 100, (startYear + 1) % 100, season.rawValue)
     }
 
     var representativeDate: Date {

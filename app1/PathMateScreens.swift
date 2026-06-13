@@ -209,6 +209,7 @@ struct OnboardingFlow: View {
                     FeatureLine(icon: "sparkles", title: "Agent 协作已准备", message: "建议会保留原因解释和接受、修改、拒绝操作。")
                 }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(20)
         }
     }
@@ -417,6 +418,7 @@ struct OnboardingFlow: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .pathCardStyle()
     }
 
@@ -1024,6 +1026,7 @@ struct AcademicsView: View {
     @ObservedObject var store: PathMateStore
     @State private var addingCourse = false
     @State private var editingCourse: Course?
+    @State private var schedulingTodoCourse: Course?
     @State private var studyAidCourseID: UUID?
     @State private var showingImportCenter = false
     @State private var addSingleCourseAfterImport = false
@@ -1038,21 +1041,27 @@ struct AcademicsView: View {
                         EmptyStateView(systemImage: "books.vertical", title: "还没有课程", message: "添加课程后，课件、作业和辅学内容会在这里展示。")
                     } else {
                         ForEach(academicCourses) { course in
-                            NavigationLink {
-                                CourseDetailView(store: store, courseID: course.id, highlightHomeworkID: nil)
-                            } label: {
-                                CourseCard(course: course) {
-                                    studyAidCourseID = course.id
-                                }
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button("编辑课程") { editingCourse = course }
-                                Button(role: .destructive) {
-                                    store.deleteCourses(named: course.name)
-                                    toast = "已删除课程"
+                            VStack(spacing: 10) {
+                                NavigationLink {
+                                    CourseDetailView(store: store, courseID: course.id, highlightHomeworkID: nil)
                                 } label: {
-                                    Text("删除课程")
+                                    CourseCard(course: course) {
+                                        studyAidCourseID = course.id
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .contextMenu {
+                                    Button("编辑课程") { editingCourse = course }
+                                    Button("添加待办") { schedulingTodoCourse = course }
+                                    Button(role: .destructive) {
+                                        store.deleteCourses(named: course.name)
+                                        toast = "已删除课程"
+                                    } label: {
+                                        Text("删除课程")
+                                    }
+                                }
+                                PathButton(title: "添加待办", systemImage: "calendar.badge.plus", style: .secondary) {
+                                    schedulingTodoCourse = course
                                 }
                             }
                         }
@@ -1089,6 +1098,11 @@ struct AcademicsView: View {
             .sheet(item: $editingCourse) { course in
                 CourseEditorSheet(store: store, course: course) {
                     toast = "课程已更新"
+                }
+            }
+            .sheet(item: $schedulingTodoCourse) { course in
+                CourseTodoScheduleSheet(store: store, course: course) {
+                    toast = "课程待办已加入日历"
                 }
             }
             .navigationDestination(item: $studyAidCourseID) { courseID in
@@ -1795,8 +1809,11 @@ struct CourseDetailView: View {
 
     @State private var summaryExpanded = false
     @State private var editingCourse: Course?
+    @State private var schedulingTodoCourse: Course?
     @State private var studyAidCourseID: UUID?
     @State private var highlight = false
+    @State private var isAddingTag = false
+    @State private var newTagText = ""
     @State private var toast: String?
 
     var body: some View {
@@ -1829,10 +1846,32 @@ struct CourseDetailView: View {
                         toast = "课程已更新"
                     }
                 }
+                .sheet(item: $schedulingTodoCourse) { course in
+                    CourseTodoScheduleSheet(store: store, course: course) {
+                        toast = "课程待办已加入日历"
+                    }
+                }
+                .alert("添加课程标签", isPresented: $isAddingTag) {
+                    TextField("10字以内", text: $newTagText)
+                    Button("取消", role: .cancel) {
+                        newTagText = ""
+                    }
+                    Button("添加") {
+                        addTag(to: course)
+                    }
+                    .disabled(trimmedNewTag.isEmpty)
+                } message: {
+                    Text("标签会显示在课程标签栏中。")
+                }
                 .navigationDestination(item: $studyAidCourseID) { courseID in
                     CourseStudyAidPage(store: store, courseID: courseID)
                 }
                 .toast($toast)
+                .onChange(of: newTagText) { _, value in
+                    if value.count > 10 {
+                        newTagText = String(value.prefix(10))
+                    }
+                }
                 .onAppear {
                     guard highlightHomeworkID != nil else { return }
                     withAnimation(.easeInOut(duration: 0.45).repeatCount(3, autoreverses: true)) {
@@ -1852,9 +1891,21 @@ struct CourseDetailView: View {
 
     private func noteCard(_ course: Course) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("课程标签", systemImage: "tag.fill")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(PMColor.charcoal)
+            HStack(spacing: 10) {
+                Label("课程标签", systemImage: "tag.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(PMColor.charcoal)
+                Spacer()
+                Button {
+                    newTagText = ""
+                    isAddingTag = true
+                } label: {
+                    Label("添加", systemImage: "plus.circle.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(PMColor.primary)
+            }
             FlowTags(tags: course.tags, tint: PMColor.primary)
             Text(course.courseNote)
                 .font(.system(size: 14))
@@ -1862,6 +1913,25 @@ struct CourseDetailView: View {
         }
         .padding(16)
         .pathCardStyle()
+    }
+
+    private var trimmedNewTag: String {
+        String(newTagText.trimmingCharacters(in: .whitespacesAndNewlines).prefix(10))
+    }
+
+    private func addTag(to course: Course) {
+        let tag = trimmedNewTag
+        guard !tag.isEmpty else { return }
+        guard !course.tags.contains(tag) else {
+            toast = "标签已存在"
+            newTagText = ""
+            return
+        }
+        var edited = course
+        edited.tags.append(tag)
+        store.updateCourse(edited)
+        newTagText = ""
+        toast = "标签已添加"
     }
 
     private func summaryCard(_ course: Course) -> some View {
@@ -1924,12 +1994,14 @@ struct CourseDetailView: View {
                         .foregroundStyle(PMColor.primary)
                     }
                     .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .background(highlightHomeworkID == homework.id && highlight ? PMColor.warning.opacity(0.25) : PMColor.surface)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
             }
         }
         .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .pathCardStyle()
     }
 
@@ -1974,7 +2046,10 @@ struct CourseDetailView: View {
                 .foregroundStyle(PMColor.slate)
             PathButton(title: "生成复习任务", systemImage: "plus.circle.fill") {
                 store.generateReviewTask(for: course)
-                toast = "已加入接下来"
+                toast = "已生成复习任务"
+            }
+            PathButton(title: "添加课程待办", systemImage: "calendar.badge.plus", style: .secondary) {
+                schedulingTodoCourse = course
             }
         }
         .padding(16)
@@ -3014,8 +3089,10 @@ struct FeatureLine: View {
                     .foregroundStyle(PMColor.slate)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 0)
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .pathCardStyle()
     }
 }
@@ -3467,10 +3544,17 @@ struct AddPersonalEventSheet: View {
 
     private var recurrence: TaskRecurrence? {
         guard isFixedSchedule else { return nil }
+        let anchorDate = recurrenceAnchorDate(
+            after: selectedDate,
+            startMinute: startMinute,
+            unit: recurrenceUnit,
+            weekday: recurrenceWeekday,
+            dayOfMonth: recurrenceDayOfMonth
+        )
         if recurrenceUnit.isMonthly {
-            return TaskRecurrence(unit: recurrenceUnit, anchorDate: selectedDate, weekday: nil, dayOfMonth: recurrenceDayOfMonth)
+            return TaskRecurrence(unit: recurrenceUnit, anchorDate: anchorDate, weekday: nil, dayOfMonth: recurrenceDayOfMonth)
         }
-        return TaskRecurrence(unit: recurrenceUnit, anchorDate: selectedDate, weekday: recurrenceWeekday, dayOfMonth: nil)
+        return TaskRecurrence(unit: recurrenceUnit, anchorDate: anchorDate, weekday: recurrenceWeekday, dayOfMonth: nil)
     }
 }
 
@@ -3576,10 +3660,17 @@ struct CourseTodoScheduleSheet: View {
 
     private var recurrence: TaskRecurrence? {
         guard isFixedSchedule else { return nil }
+        let anchorDate = recurrenceAnchorDate(
+            after: selectedDate,
+            startMinute: startMinute,
+            unit: recurrenceUnit,
+            weekday: recurrenceWeekday,
+            dayOfMonth: recurrenceDayOfMonth
+        )
         if recurrenceUnit.isMonthly {
-            return TaskRecurrence(unit: recurrenceUnit, anchorDate: selectedDate, weekday: nil, dayOfMonth: recurrenceDayOfMonth)
+            return TaskRecurrence(unit: recurrenceUnit, anchorDate: anchorDate, weekday: nil, dayOfMonth: recurrenceDayOfMonth)
         }
-        return TaskRecurrence(unit: recurrenceUnit, anchorDate: selectedDate, weekday: recurrenceWeekday, dayOfMonth: nil)
+        return TaskRecurrence(unit: recurrenceUnit, anchorDate: anchorDate, weekday: recurrenceWeekday, dayOfMonth: nil)
     }
 
     private static func nextDate(for weekday: Int) -> Date {
@@ -3587,6 +3678,46 @@ struct CourseTodoScheduleSheet: View {
         let offset = PathMateTime.dayOffset(from: PathMateTime.weekday(from: today), to: weekday)
         return Calendar.current.date(byAdding: .day, value: offset, to: today) ?? today
     }
+}
+
+private func recurrenceAnchorDate(after selectedDate: Date, startMinute: Int, unit: ScheduleRecurrenceUnit, weekday: Int, dayOfMonth: Int) -> Date {
+    let calendar = Calendar.current
+    let selectedDay = calendar.startOfDay(for: selectedDate)
+
+    if unit.isMonthly {
+        for monthOffset in 0...24 {
+            guard let monthDate = calendar.date(byAdding: .month, value: monthOffset, to: selectedDay) else {
+                continue
+            }
+            let components = calendar.dateComponents([.year, .month], from: monthDate)
+            let targetDay = clampedDay(dayOfMonth, in: monthDate)
+            guard let candidateDay = calendar.date(from: DateComponents(year: components.year, month: components.month, day: targetDay)),
+                  let candidateStart = calendar.date(byAdding: .minute, value: startMinute, to: candidateDay)
+            else { continue }
+            if candidateStart >= selectedDate {
+                return candidateDay
+            }
+        }
+        return selectedDay
+    }
+
+    for dayOffset in 0...14 {
+        guard let candidateDay = calendar.date(byAdding: .day, value: dayOffset, to: selectedDay),
+              PathMateTime.weekday(from: candidateDay) == weekday,
+              let candidateStart = calendar.date(byAdding: .minute, value: startMinute, to: candidateDay)
+        else { continue }
+        if candidateStart >= selectedDate {
+            return candidateDay
+        }
+    }
+
+    let fallbackOffset = PathMateTime.dayOffset(from: PathMateTime.weekday(from: selectedDay), to: weekday)
+    return calendar.date(byAdding: .day, value: fallbackOffset, to: selectedDay) ?? selectedDay
+}
+
+private func clampedDay(_ day: Int, in monthDate: Date) -> Int {
+    let range = Calendar.current.range(of: .day, in: .month, for: monthDate)
+    return min(max(day, 1), range?.count ?? day)
 }
 
 struct ConflictSuggestionSheet: View {

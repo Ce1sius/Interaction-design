@@ -301,6 +301,7 @@ final class PathMateStore: ObservableObject {
         tasks
             .filter { task in
                 guard task.status != .completed else { return false }
+                guard isScheduleTask(task) else { return false }
                 if let term, !isTask(task, visibleIn: term) {
                     return false
                 }
@@ -429,7 +430,7 @@ final class PathMateStore: ObservableObject {
     }
 
     func addCourseTodo(for course: Course, title: String? = nil, date: Date = Date(), recurrence: TaskRecurrence? = nil, startMinute: Int? = nil, durationMinutes: Int = 45, priority: Int? = nil) {
-        let taskWeekday = recurrence?.weekday ?? PathMateTime.weekday(from: date)
+        let taskWeekday = recurrence?.weekday ?? recurrence.map { PathMateTime.weekday(from: $0.anchorDate) } ?? PathMateTime.weekday(from: date)
         let trimmedTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines)
         tasks.append(
             PlanTask(
@@ -521,7 +522,7 @@ final class PathMateStore: ObservableObject {
 
     func addPersonalEvent(title: String, date: Date, recurrence: TaskRecurrence?, startMinute: Int, durationMinutes: Int, importance: Int, isMovable: Bool) -> AgentSuggestion? {
         let taskID = UUID()
-        let weekday = recurrence?.weekday ?? PathMateTime.weekday(from: date)
+        let weekday = recurrence?.weekday ?? recurrence.map { PathMateTime.weekday(from: $0.anchorDate) } ?? PathMateTime.weekday(from: date)
         let event = PersonalEvent(id: UUID(), linkedTaskID: taskID, title: title, weekday: weekday, startMinute: startMinute, durationMinutes: durationMinutes, importance: importance, isMovable: isMovable, scheduledDate: recurrence == nil ? date : nil, recurrence: recurrence)
         let eventTask = PlanTask(
             id: taskID,
