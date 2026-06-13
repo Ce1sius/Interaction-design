@@ -6,7 +6,7 @@ from typing import Iterator
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.config import Settings
-from app.courses.repository import CourseRepository
+from app.courses.repository import CourseRepository, utc_now
 import hashlib
 
 from app.courses.schemas import (
@@ -20,7 +20,9 @@ from app.courses.schemas import (
 from app.crawler.browser_adapter import BrowserSourceAdapter
 from app.crawler.static_html_adapter import StaticHTMLSourceAdapter
 from app.crawler.zju_learning_adapter import ZJULearningSourceAdapter
+from app.crawler.url_normalizer import normalize_url
 from app.documents.remote_fetcher import RemoteDocumentFetcher
+from app.documents.remote_fetcher import extract_pdf_text
 from app.indexing.material_sync_service import CourseMaterialSyncService
 from app.indexing.provider import LocalKeywordIndexProvider
 from app.mindmap.generation_service import MindMapGenerationError, MindMapGenerationService
@@ -118,6 +120,63 @@ async def sync_materials(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return result.stats
+
+
+@router.put("/courses/{course_id}/documents/imported", response_model=CourseDocumentResponse)
+async def import_downloaded_document(
+    course_id: str,
+    request: Request,
+    title: str,
+    sourceUrl: str,
+    conn: Connection = Depends(get_conn),
+    settings: Settings = Depends(get_settings_dep),
+) -> CourseDocumentResponse:
+    repo = CourseRepository(conn)
+    if repo.get_course(course_id) is None:
+        raise HTTPException(status_code=404, detail="course not found")
+
+    raw = await request.body()
+    if len(raw) > settings.max_pdf_bytes:
+        raise HTTPException(status_code=413, detail="PDF exceeds configured size limit")
+    if not raw.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="uploaded document is not a PDF")
+
+    normalized_url = normalize_url(sourceUrl)
+    content_hash = hashlib.sha256(raw).hexdigest()
+    text = extract_pdf_text(
+        raw,
+        enable_ocr=settings.enable_ocr,
+        ocr_language=settings.ocr_language,
+        ocr_max_pages=settings.ocr_max_pages,
+    )
+    document = repo.upsert_document(
+        course_id=course_id,
+        source_url=normalized_url,
+        normalized_url=normalized_url,
+        title=title,
+        content_type="application/pdf",
+        file_size=len(raw),
+        etag=None,
+        last_modified=None,
+        content_hash=content_hash,
+        status="indexed",
+        indexed_at=utc_now(),
+    )
+    vector_file_id = LocalKeywordIndexProvider(conn).update_document(course_id, document, text)
+    return repo.upsert_document(
+        course_id=course_id,
+        source_url=normalized_url,
+        normalized_url=normalized_url,
+        title=document.title,
+        content_type="application/pdf",
+        file_size=len(raw),
+        etag=None,
+        last_modified=None,
+        content_hash=content_hash,
+        status="indexed",
+        vector_file_id=vector_file_id,
+        indexed_at=utc_now(),
+    )
 
 
 @router.get("/courses/{course_id}/documents", response_model=list[CourseDocumentResponse])
