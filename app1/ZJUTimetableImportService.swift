@@ -301,6 +301,11 @@ enum ZJULearningMaterialService {
         }
     }
 
+    static func cookieHeader() async -> String? {
+        let cookies = await authenticationCookies()
+        return HTTPCookie.requestHeaderFields(with: cookies)["Cookie"]
+    }
+
     private static func authenticationCookies() async -> [HTTPCookie] {
         await withCheckedContinuation { continuation in
             WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in

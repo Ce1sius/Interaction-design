@@ -2,11 +2,13 @@ import SwiftUI
 
 struct MindMapCanvasView: View {
     @ObservedObject var viewModel: MindMapViewModel
+    var onNodeSelected: ((MindNode, CGSize) -> Void)?
     @State private var lastOffset: CGSize
     @State private var lastScale: CGFloat
 
-    init(viewModel: MindMapViewModel) {
+    init(viewModel: MindMapViewModel, onNodeSelected: ((MindNode, CGSize) -> Void)? = nil) {
         self.viewModel = viewModel
+        self.onNodeSelected = onNodeSelected
         _lastOffset = State(initialValue: viewModel.offset)
         _lastScale = State(initialValue: viewModel.scale)
     }
@@ -26,13 +28,14 @@ struct MindMapCanvasView: View {
                         node: node,
                         isSelected: viewModel.selectedNodeID == node.id,
                         isFocusedBranch: viewModel.isNodeInFocusedBranch(node),
-                        hasChildren: !node.children.isEmpty,
+                        hasChildren: !node.children.isEmpty || node.tags.contains("可展开"),
                         isExpanded: viewModel.expandedNodeIDs.contains(node.id)
                     ) {
                         withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
                             viewModel.selectNode(node)
                             viewModel.gentlyCenter(nodeID: node.id, in: proxy.size)
                         }
+                        onNodeSelected?(node, proxy.size)
                     }
                     .scaleEffect(metrics.finalScale)
                     .opacity(metrics.opacity)

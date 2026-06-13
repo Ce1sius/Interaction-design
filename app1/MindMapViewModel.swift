@@ -135,6 +135,21 @@ final class MindMapViewModel: ObservableObject {
         refreshLayout()
     }
 
+    func replaceRoot(_ rootNode: MindNode, focusingRemoteID: String? = nil) {
+        self.rootNode = rootNode
+        let focusedNode = focusingRemoteID.flatMap { rootNode.find(remoteID: $0) } ?? rootNode
+        selectedNodeID = focusedNode.id
+        focusedNodeID = focusedNode.id
+        expandedNodeIDs = [rootNode.id]
+        expandPath(to: focusedNode.id)
+        if !focusedNode.children.isEmpty {
+            expandedNodeIDs.insert(focusedNode.id)
+        }
+        scale = 1
+        offset = CGSize(width: 74, height: 210)
+        refreshLayout()
+    }
+
     func clampedScale(_ value: CGFloat) -> CGFloat {
         min(2.2, max(0.5, value))
     }

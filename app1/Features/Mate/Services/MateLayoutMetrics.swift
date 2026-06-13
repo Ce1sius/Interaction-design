@@ -3,13 +3,14 @@ import Foundation
 
 struct MateLayoutMetrics {
     var normalSize: CGFloat = 78
-    var minimizedSize: CGFloat = 54
+    var minimizedSize: CGFloat = 40
     var expandedSize: CGFloat = 96
     var celebrationSize: CGFloat = 142
-    var minimizedVisibleHeight: CGFloat = 54
+    var minimizedVisibleHeight: CGFloat = 40
     var edgePadding: CGFloat = 16
     var bottomPadding: CGFloat = 100
-    var topMinimizedPadding: CGFloat = 8
+    var topMinimizedPadding: CGFloat = 2
+    var minimizedTouchFrameSize: CGFloat = 48
     var menuButtonSize: CGFloat = 48
     var menuRadius: CGFloat = 82
     var snapAnimationResponse: Double = 0.42
@@ -95,11 +96,11 @@ struct MateBoundsCalculator {
         characterSize: CGFloat,
         metrics: MateLayoutMetrics = .standard
     ) -> CGPoint {
-        let half = characterSize / 2
-        let x = safeArea.leading + metrics.edgePadding + half
+        let touchHalf = metrics.minimizedTouchFrameSize / 2
+        let x = safeArea.leading + touchHalf + 2
         return CGPoint(
             x: x,
-            y: safeArea.top + metrics.topMinimizedPadding + half
+            y: metrics.topMinimizedPadding + touchHalf
         )
     }
 }

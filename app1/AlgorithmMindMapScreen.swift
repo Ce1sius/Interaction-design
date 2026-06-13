@@ -20,6 +20,9 @@ struct AlgorithmMindMapScreen: View {
     @State private var inlinePreviewItem: CourseMaterialPreviewItem?
     @State private var downloadingMaterialID: UUID?
     @State private var toast: String?
+    @State private var didRequestBackendMindMap = false
+    @State private var isLoadingBackendMindMap = false
+    @State private var expandingBackendNodeIDs: Set<String> = []
 
     init(course: Course? = nil, initialTopicTitle: String? = nil) {
         self.course = course
@@ -62,6 +65,9 @@ struct AlgorithmMindMapScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             applyInitialTopicIfNeeded()
+        }
+        .task(id: course?.id) {
+            await loadBackendMindMapIfAvailable()
         }
         .onChange(of: selectedResourceMode) { _, mode in
             if mode != .courseware {
@@ -172,7 +178,7 @@ struct AlgorithmMindMapScreen: View {
                     Text("动态思维导图")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(PMColor.ink)
-                    Text(course == nil ? "点击节点展开分支，确认后进入该知识点学习内容" : "围绕 \(course?.name ?? "课程") 的课件、作业和重点知识点展开")
+                    Text(mindMapSubtitle)
                         .font(.system(size: 12))
                         .foregroundStyle(PMColor.steel)
                 }
@@ -193,7 +199,11 @@ struct AlgorithmMindMapScreen: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
 
-            MindMapCanvasView(viewModel: viewModel)
+            MindMapCanvasView(viewModel: viewModel) { node, canvasSize in
+                Task {
+                    await expandBackendNodeIfAvailable(node, canvasSize: canvasSize)
+                }
+            }
                 .frame(maxHeight: .infinity)
                 .frame(minHeight: 360)
                 .padding(.horizontal, 16)
@@ -310,6 +320,15 @@ struct AlgorithmMindMapScreen: View {
         let sourceTitle = selectedResourceMode == .replay ? "视频回放" : "课件预览"
         guard let course else { return sourceTitle }
         return "\(course.name) · \(sourceTitle)"
+    }
+
+    private var mindMapSubtitle: String {
+        if isLoadingBackendMindMap {
+            return "正在从后端同步课件并生成课程知识图谱"
+        }
+        return course == nil
+            ? "点击节点展开分支，确认后进入该知识点学习内容"
+            : "围绕 \(course?.name ?? "课程") 的课件、作业和重点知识点展开"
     }
 
     private var resourceWindowHeight: CGFloat {
@@ -475,10 +494,369 @@ struct AlgorithmMindMapScreen: View {
         viewModel.jumpToNode(title: initialTopicTitle)
         isMindMapExpanded = false
     }
+
+    private func loadBackendMindMapIfAvailable() async {
+        guard let course, !didRequestBackendMindMap else { return }
+        didRequestBackendMindMap = true
+        isLoadingBackendMindMap = true
+        do {
+            let rootNode = try await MindMapBackendClient.shared.loadMindMap(for: course)
+            viewModel.replaceRoot(rootNode)
+            applyInitialTopicIfNeeded()
+            toast = "已接入大模型课程图谱"
+        } catch {
+            toast = "大模型图谱生成失败：\(error.localizedDescription)"
+        }
+        isLoadingBackendMindMap = false
+    }
+
+    private func expandBackendNodeIfAvailable(_ node: MindNode, canvasSize: CGSize) async {
+        guard let course,
+              let remoteID = node.remoteID,
+              node.tags.contains("可展开"),
+              node.children.isEmpty,
+              !expandingBackendNodeIDs.contains(remoteID) else {
+            return
+        }
+        expandingBackendNodeIDs.insert(remoteID)
+        do {
+            let rootNode = try await MindMapBackendClient.shared.expandMindMap(for: course, nodeID: remoteID)
+            viewModel.replaceRoot(rootNode, focusingRemoteID: remoteID)
+            if let selectedNodeID = viewModel.selectedNodeID {
+                viewModel.gentlyCenter(nodeID: selectedNodeID, in: canvasSize)
+            }
+            toast = "已展开大模型分支"
+        } catch {
+            // Expansion should not break the existing local graph interaction.
+        }
+        expandingBackendNodeIDs.remove(remoteID)
+    }
 }
 
 struct AlgorithmMindMapScreen_Previews: PreviewProvider {
     static var previews: some View {
         AlgorithmMindMapScreen()
     }
+}
+
+private final class MindMapBackendClient {
+    static let shared = MindMapBackendClient()
+
+    private let session: URLSession
+    private let decoder = JSONDecoder()
+    private let encoder = JSONEncoder()
+
+    private var baseURL: URL {
+        URL(string: UserDefaults.standard.string(forKey: "PathMateBackendBaseURL") ?? "http://127.0.0.1:8000")!
+    }
+
+    private init(session: URLSession = .shared) {
+        self.session = session
+    }
+
+    func loadMindMap(for course: Course) async throws -> MindNode {
+        let courseID = backendCourseID(for: course)
+        try await configureImportedCourse(course, courseID: courseID)
+        try await syncMaterials(for: course, courseID: courseID)
+        let response: BackendMindMapResponse = try await request(path: "/courses/\(courseID)/mind-map/regenerate", method: "POST", body: Optional<BackendEmptyRequest>.none)
+        return try response.toMindNode()
+    }
+
+    func expandMindMap(for course: Course, nodeID: String) async throws -> MindNode {
+        let courseID = backendCourseID(for: course)
+        let body = BackendMindMapExpansionRequest(nodeId: nodeID, requestedDepth: 1)
+        let response: BackendMindMapResponse = try await request(path: "/courses/\(courseID)/mind-map/expand", method: "POST", body: body)
+        return try response.toMindNode()
+    }
+
+    private func configureImportedCourse(_ course: Course, courseID: String) async throws {
+        let body = ImportedCoursesBackendRequest(courses: [
+            ImportedCourseBackendConfig(id: courseID, name: course.name, semester: course.academicTerm?.shortName ?? "2026-spring")
+        ])
+        let _: [BackendCourseResponse] = try await request(path: "/courses/imported/zju-learning", method: "POST", body: body)
+    }
+
+    private func syncMaterials(for course: Course, courseID: String) async throws {
+        let uploadedCount = try await uploadImportedPDFMaterialsIfAvailable(course.materials, courseID: courseID)
+        if uploadedCount > 0 {
+            return
+        }
+
+        let cookieHeader = await ZJULearningMaterialService.cookieHeader()
+        let body = SyncMaterialsBackendRequest(
+            adapter: "zjuLearning",
+            auth: BackendAuthSession(cookieHeader: cookieHeader),
+            useBrowserFallback: true
+        )
+        let _: BackendSyncStats = try await request(path: "/courses/\(courseID)/sync-materials", method: "POST", body: body)
+    }
+
+    private func uploadImportedPDFMaterialsIfAvailable(_ materials: [CourseMaterial], courseID: String) async throws -> Int {
+        let uploadableMaterials = materials.filter { material in
+            material.remoteID != nil
+        }
+        guard !uploadableMaterials.isEmpty else { return 0 }
+
+        var uploadedCount = 0
+        var failures: [String] = []
+        for material in uploadableMaterials.prefix(8) {
+            do {
+                let fileURL = try await ZJULearningMaterialService.download(material)
+                let data = try Data(contentsOf: fileURL)
+                try await uploadDocument(data, material: material, courseID: courseID)
+                uploadedCount += 1
+            } catch {
+                failures.append("\(material.title): \(error.localizedDescription)")
+            }
+        }
+        if uploadedCount == 0, let firstFailure = failures.first {
+            throw MindMapBackendError.message("已导入课件上传失败，\(firstFailure)")
+        }
+        return uploadedCount
+    }
+
+    private func uploadDocument(_ data: Data, material: CourseMaterial, courseID: String) async throws {
+        var components = URLComponents(url: backendURL(path: "/courses/\(courseID)/documents/imported"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [
+            URLQueryItem(name: "title", value: material.title),
+            URLQueryItem(name: "sourceUrl", value: materialSourceURL(for: material))
+        ]
+        guard let url = components?.url else {
+            throw URLError(.badURL)
+        }
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 90
+        request.httpBody = data
+        request.setValue(contentType(for: material), forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let _: BackendCourseDocumentResponse = try await perform(request)
+    }
+
+    private func contentType(for material: CourseMaterial) -> String {
+        let title = material.title.lowercased()
+        if title.hasSuffix(".pdf") {
+            return "application/pdf"
+        }
+        if title.hasSuffix(".pptx") {
+            return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        }
+        if title.hasSuffix(".docx") {
+            return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        }
+        return "application/octet-stream"
+    }
+
+    private func materialSourceURL(for material: CourseMaterial) -> String {
+        if let remoteID = material.remoteID {
+            return "https://courses.zju.edu.cn/api/uploads/\(remoteID)/blob"
+        }
+        if let referenceID = material.remoteReferenceID {
+            return "https://courses.zju.edu.cn/api/uploads/reference/\(referenceID)/blob"
+        }
+        return "https://courses.zju.edu.cn/materials/\(material.id.uuidString.lowercased()).pdf"
+    }
+
+    private func request<Response: Decodable>(path: String) async throws -> Response {
+        var request = URLRequest(url: backendURL(path: path))
+        request.httpMethod = "GET"
+        request.timeoutInterval = 60
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try await perform(request)
+    }
+
+    private func request<Response: Decodable, Body: Encodable>(
+        path: String,
+        method: String,
+        body: Body?
+    ) async throws -> Response {
+        var request = URLRequest(url: backendURL(path: path))
+        request.httpMethod = method
+        request.timeoutInterval = 60
+        if let body {
+            request.httpBody = try encoder.encode(body)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try await perform(request)
+    }
+
+    private func perform<Response: Decodable>(_ request: URLRequest) async throws -> Response {
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw URLError(.badServerResponse)
+        }
+        guard (200..<300).contains(httpResponse.statusCode) else {
+            let message = (try? decoder.decode(BackendErrorResponse.self, from: data).message)
+            throw MindMapBackendError.httpStatus(httpResponse.statusCode, message)
+        }
+        return try decoder.decode(Response.self, from: data)
+    }
+
+    private func backendURL(path: String) -> URL {
+        baseURL.appendingPathComponent(path.trimmingCharacters(in: CharacterSet(charactersIn: "/")))
+    }
+
+    private func backendCourseID(for course: Course) -> String {
+        course.id.uuidString.lowercased()
+    }
+}
+
+private enum MindMapBackendError: Error {
+    case httpStatus(Int, String?)
+    case malformedTree
+    case message(String)
+}
+
+extension MindMapBackendError: LocalizedError {
+    var errorDescription: String? {
+        switch self {
+        case let .httpStatus(status, message):
+            if let message, !message.isEmpty {
+                return "HTTP \(status)：\(message)"
+            }
+            return "HTTP \(status)"
+        case .malformedTree:
+            return "后端返回的思维导图结构不完整"
+        case let .message(message):
+            return message
+        }
+    }
+}
+
+private struct ImportedCoursesBackendRequest: Encodable {
+    var courses: [ImportedCourseBackendConfig]
+}
+
+private struct ImportedCourseBackendConfig: Encodable {
+    var id: String
+    var name: String
+    var semester: String
+}
+
+private struct BackendAuthSession: Encodable {
+    var cookieHeader: String?
+}
+
+private struct SyncMaterialsBackendRequest: Encodable {
+    var adapter: String
+    var auth: BackendAuthSession?
+    var useBrowserFallback: Bool
+}
+
+private struct BackendCourseResponse: Decodable {
+    var id: String
+}
+
+private struct BackendEmptyRequest: Encodable {}
+
+private struct BackendSyncStats: Decodable {
+    var courseId: String
+    var discovered: Int
+}
+
+private struct BackendCourseDocumentResponse: Decodable {
+    var id: String
+}
+
+private struct BackendErrorResponse: Decodable {
+    var detail: BackendErrorDetail
+
+    var message: String {
+        detail.message
+    }
+}
+
+private enum BackendErrorDetail: Decodable {
+    case string(String)
+    case object(String)
+
+    var message: String {
+        switch self {
+        case let .string(value):
+            return value
+        case let .object(value):
+            return value
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(String.self) {
+            self = .string(value)
+            return
+        }
+        if let object = try? container.decode([String: String].self),
+           let message = object["message"] ?? object["detail"] {
+            self = .object(message)
+            return
+        }
+        self = .object("后端请求失败")
+    }
+}
+
+private struct BackendMindMapExpansionRequest: Encodable {
+    var nodeId: String
+    var requestedDepth: Int
+}
+
+private struct BackendMindMapResponse: Decodable {
+    var courseId: String
+    var title: String
+    var rootNodeId: String
+    var nodes: [BackendMindMapNode]
+    var edges: [BackendMindMapEdge]
+
+    func toMindNode() throws -> MindNode {
+        let grouped = Dictionary(grouping: nodes) { $0.parentId }
+        guard let root = nodes.first(where: { $0.id == rootNodeId }) ?? grouped[nil]?.first else {
+            throw MindMapBackendError.malformedTree
+        }
+        return buildNode(root, grouped: grouped).assigningHierarchy(level: 0, parentID: nil)
+    }
+
+    private func buildNode(_ node: BackendMindMapNode, grouped: [String?: [BackendMindMapNode]]) -> MindNode {
+        let children = grouped[node.id, default: []]
+            .sorted { $0.importance > $1.importance }
+            .map { buildNode($0, grouped: grouped) }
+        var tags = [node.type, node.evidenceLevel]
+        if node.hasMoreChildren {
+            tags.append("可展开")
+        }
+        return MindNode(
+            title: node.title,
+            summary: node.summary,
+            tags: tags,
+            children: children,
+            remoteID: node.id
+        )
+    }
+}
+
+private struct BackendMindMapNode: Decodable {
+    var id: String
+    var parentId: String?
+    var title: String
+    var summary: String
+    var type: String
+    var depth: Int
+    var importance: Double
+    var hasMoreChildren: Bool
+    var evidenceLevel: String
+    var sourceRefs: [BackendMindMapSourceReference]
+}
+
+private struct BackendMindMapSourceReference: Decodable {
+    var documentId: String
+    var documentTitle: String
+    var sourceUrl: String
+    var page: Int?
+    var chunkId: String?
+}
+
+private struct BackendMindMapEdge: Decodable {
+    var id: String
+    var from: String
+    var to: String
+    var relation: String
 }

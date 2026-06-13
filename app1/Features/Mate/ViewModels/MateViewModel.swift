@@ -294,7 +294,7 @@ final class MateViewModel: ObservableObject {
 
     private func restoredPosition(in size: CGSize, safeArea: EdgeInsetsValue) -> CGPoint {
         if profile.isMinimized {
-            return MateBoundsCalculator.minimizedPosition(edge: .right, in: size, safeArea: safeArea, characterSize: metrics.normalSize, metrics: metrics)
+            return MateBoundsCalculator.minimizedPosition(edge: .left, in: size, safeArea: safeArea, characterSize: metrics.minimizedSize, metrics: metrics)
         }
         if let normalized = profile.normalizedPosition, size.width > 0, size.height > 0 {
             return MateBoundsCalculator.clampedPosition(

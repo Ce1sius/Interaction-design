@@ -8,9 +8,6 @@ struct MainTabView: View {
 
     var body: some View {
         TabView {
-            AlgorithmMindMapScreen()
-                .tabItem { Label("图谱", systemImage: "point.3.connected.trianglepath.dotted") }
-
             NextUpView(store: store)
                 .tabItem { Label("接下来", systemImage: "clock") }
 

@@ -242,6 +242,10 @@ struct KnowledgeDetailPanel: View {
                 title: displayTitle(for: exercise.category),
                 description: "\(exercise.title)\n\n\(exercise.description)",
                 actionTitle: exercise.actionTitle,
+                prompt: exercise.prompt,
+                hints: exercise.hints,
+                solution: exercise.solution,
+                pitfalls: exercise.pitfalls,
                 systemImage: icon(for: exercise.category),
                 tint: tint(for: exercise.category)
             )
@@ -252,6 +256,10 @@ struct KnowledgeDetailPanel: View {
                 title: "易错点",
                 description: detail.mistakes.map { "• \($0)" }.joined(separator: "\n"),
                 actionTitle: "集中查看",
+                prompt: "复盘「\(detail.title)」时，先判断错误属于哪一类：概念条件、公式选择、计算步骤、题意翻译或边界情况。",
+                hints: ["每次只复盘一个错误", "把错误写成可检查动作", "给自己补一道同类型小题"],
+                solution: "建议记录格式：错因：____；正确第一步：____；下次检查：____。",
+                pitfalls: detail.mistakes,
                 systemImage: "exclamationmark.triangle.fill",
                 tint: PMColor.warning
             )
@@ -333,6 +341,10 @@ struct PracticeResource: Identifiable {
     var title: String
     var description: String
     var actionTitle: String
+    var prompt: String = ""
+    var hints: [String] = []
+    var solution: String = ""
+    var pitfalls: [String] = []
     var systemImage: String
     var tint: Color
 }
@@ -366,9 +378,67 @@ struct PracticeResourceDetailPage: View {
                         .foregroundStyle(PMColor.slate)
                         .fixedSize(horizontal: false, vertical: true)
 
+                    if !resource.prompt.isEmpty {
+                        contentSection(title: "题目", icon: "questionmark.circle.fill", tint: resource.tint) {
+                            Text(resource.prompt)
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(PMColor.charcoal)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    if !resource.hints.isEmpty {
+                        contentSection(title: "提示", icon: "lightbulb.fill", tint: PMColor.warning) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(Array(resource.hints.enumerated()), id: \.offset) { index, hint in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Text("\(index + 1)")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(.white)
+                                            .frame(width: 20, height: 20)
+                                            .background(PMColor.warning)
+                                            .clipShape(Circle())
+                                        Text(hint)
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(PMColor.slate)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !resource.solution.isEmpty {
+                        contentSection(title: "参考解析", icon: "checkmark.seal.fill", tint: PMColor.success) {
+                            Text(resource.solution)
+                                .font(.system(size: 15))
+                                .foregroundStyle(PMColor.slate)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    if !resource.pitfalls.isEmpty {
+                        contentSection(title: "易错提醒", icon: "exclamationmark.triangle.fill", tint: PMColor.course) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(resource.pitfalls, id: \.self) { item in
+                                    HStack(alignment: .top, spacing: 8) {
+                                        Circle()
+                                            .fill(PMColor.course)
+                                            .frame(width: 6, height: 6)
+                                            .padding(.top, 7)
+                                        Text(item)
+                                            .font(.system(size: 14))
+                                            .foregroundStyle(PMColor.slate)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     InfoBox(
                         title: resource.actionTitle,
-                        message: "这里先作为 MVP 的具体内容页，后续可以接入题目解析、步骤提示、自测交互或错题复盘记录。",
+                        message: "完成后可以回到学习记录勾选「已练习」或「标记不会」，后续再接入自动判题与错题本。",
                         icon: "sparkles",
                         tint: resource.tint
                     )
@@ -383,6 +453,24 @@ struct PracticeResourceDetailPage: View {
                 }
             }
         }
+    }
+
+    private func contentSection<Content: View>(
+        title: String,
+        icon: String,
+        tint: Color,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Label(title, systemImage: icon)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(tint)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(PMColor.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 }
 

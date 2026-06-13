@@ -10,6 +10,7 @@ struct MindNode: Identifiable, Equatable {
     var parentID: UUID?
     var summary: String?
     var tags: [String]
+    var remoteID: String?
 
     init(
         id: UUID = UUID(),
@@ -19,7 +20,8 @@ struct MindNode: Identifiable, Equatable {
         children: [MindNode] = [],
         level: Int = 0,
         position: CGPoint = .zero,
-        parentID: UUID? = nil
+        parentID: UUID? = nil,
+        remoteID: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -29,6 +31,7 @@ struct MindNode: Identifiable, Equatable {
         self.parentID = parentID
         self.summary = summary
         self.tags = tags
+        self.remoteID = remoteID
     }
 }
 
@@ -180,6 +183,18 @@ extension MindNode {
         }
         for child in children {
             if let match = child.find(title: targetTitle) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    func find(remoteID targetRemoteID: String) -> MindNode? {
+        if remoteID == targetRemoteID {
+            return self
+        }
+        for child in children {
+            if let match = child.find(remoteID: targetRemoteID) {
                 return match
             }
         }

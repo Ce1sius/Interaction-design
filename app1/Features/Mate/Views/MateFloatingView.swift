@@ -87,7 +87,7 @@ struct MateFloatingView: View {
 
     private var touchFrameSize: CGFloat {
         if viewModel.displayState == .minimized {
-            return max(64, viewModel.metrics.minimizedSize + 10)
+            return max(viewModel.metrics.minimizedTouchFrameSize, viewModel.metrics.minimizedSize + 8)
         }
         return max(170, viewModel.metrics.expandedSize + viewModel.metrics.menuRadius)
     }
