@@ -34,12 +34,13 @@ struct PathButton: View {
             .frame(minHeight: 44)
             .frame(maxWidth: .infinity)
             .padding(.horizontal, 14)
-            .background(backgroundColor)
+            .background(background)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .stroke(borderColor, lineWidth: borderColor == .clear ? 0 : 1)
             }
+            .shadow(color: shadowColor, radius: style == .primary ? 12 : 0, x: 0, y: style == .primary ? 6 : 0)
             .scaleEffect(isPressed ? 0.98 : 1)
             .animation(.spring(response: 0.18, dampingFraction: 0.75), value: isPressed)
         }
@@ -68,6 +69,23 @@ struct PathButton: View {
         }
     }
 
+    @ViewBuilder
+    private var background: some View {
+        if style == .primary {
+            LinearGradient(
+                colors: [PMColor.primary, PMColor.primaryPressed],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else {
+            backgroundColor
+        }
+    }
+
+    private var shadowColor: Color {
+        style == .primary ? PMColor.primary.opacity(0.2) : .clear
+    }
+
     private var borderColor: Color {
         switch style {
         case .secondary: return PMColor.strongHairline
@@ -86,11 +104,12 @@ struct IconButton: View {
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(PMColor.primary)
                 .frame(width: 42, height: 42)
-                .background(PMColor.surfaceRaised)
+                .background(PMColor.parchment)
                 .clipShape(Circle())
                 .overlay {
                     Circle().stroke(PMColor.hairline, lineWidth: 1)
                 }
+                .shadow(color: PMColor.agent.opacity(0.11), radius: 12, x: 0, y: 6)
         }
         .buttonStyle(.plain)
     }
@@ -112,9 +131,15 @@ struct TagChip: View {
                 .lineLimit(1)
         }
         .foregroundStyle(tint)
-        .padding(.horizontal, 8)
+        .padding(.horizontal, 9)
         .padding(.vertical, 5)
-        .background(tint.opacity(0.13))
+        .background(
+            Capsule()
+                .fill(tint.opacity(0.12))
+                .overlay {
+                    Capsule().stroke(tint.opacity(0.2), lineWidth: 1)
+                }
+        )
         .clipShape(Capsule())
     }
 }
@@ -142,7 +167,16 @@ struct InfoBox: View {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background(tint.opacity(0.1))
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(tint.opacity(0.08))
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(tint.opacity(0.7))
+                        .frame(width: 3)
+                        .padding(.vertical, 10)
+                }
+        )
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
@@ -157,10 +191,10 @@ struct TaskCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                Circle()
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(PMColor.task(task.kind))
-                    .frame(width: compact ? 12 : 16, height: compact ? 12 : 16)
-                    .padding(.top, 6)
+                    .frame(width: compact ? 5 : 6, height: compact ? 48 : 58)
+                    .shadow(color: PMColor.task(task.kind).opacity(0.28), radius: 8, x: 0, y: 4)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(task.title)
@@ -191,7 +225,7 @@ struct TaskCard: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     if task.isAgentGenerated {
                         Image(systemName: "sparkles")
-                            .foregroundStyle(PMColor.primary)
+                            .foregroundStyle(PMColor.agent)
                     }
                     Image(systemName: "chevron.right")
                         .foregroundStyle(PMColor.muted)
@@ -233,7 +267,7 @@ struct TaskCard: View {
             }
         }
         .padding(compact ? 14 : 16)
-        .pathCardStyle()
+        .pathPremiumCard(cornerRadius: compact ? 13 : 16)
         .opacity(task.status == .completed ? 0.68 : 1)
         .accessibilityElement(children: .combine)
     }
@@ -244,12 +278,23 @@ struct CourseCard: View {
     var onStudyAid: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .top, spacing: 12) {
-                Circle()
-                    .fill(PMColor.course)
-                    .frame(width: 16, height: 16)
-                    .padding(.top, 6)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [PMColor.agent.opacity(0.95), PMColor.primary.opacity(0.84)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: "book.closed.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 42, height: 42)
+                .shadow(color: PMColor.agent.opacity(0.18), radius: 12, x: 0, y: 6)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(course.name)
@@ -270,10 +315,17 @@ struct CourseCard: View {
                         Label("辅学", systemImage: "sparkles")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 7)
-                            .background(PMColor.primary)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(
+                                LinearGradient(
+                                    colors: [PMColor.agent, PMColor.agentPressed],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
                             .clipShape(Capsule())
+                            .shadow(color: PMColor.agent.opacity(0.24), radius: 10, x: 0, y: 5)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("进入课程辅学")
@@ -292,7 +344,7 @@ struct CourseCard: View {
             FlowTags(tags: Array(Set([course.academicTerm?.shortName].compactMap { $0 } + course.tags)).sorted(), tint: PMColor.primary)
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 }
 
@@ -325,8 +377,11 @@ struct SuggestionCard: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(statusTint)
                     .frame(width: 32, height: 32)
-                    .background(statusTint.opacity(0.13))
+                    .background(statusTint.opacity(0.12))
                     .clipShape(Circle())
+                    .overlay {
+                        Circle().stroke(statusTint.opacity(0.2), lineWidth: 1)
+                    }
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(suggestion.title)
@@ -375,7 +430,7 @@ struct SuggestionCard: View {
             .font(.system(size: 13, weight: .semibold))
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private var statusTint: Color {
@@ -409,9 +464,9 @@ struct EmptyStateView: View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
                 .font(.system(size: 30, weight: .semibold))
-                .foregroundStyle(PMColor.primary)
+                .foregroundStyle(PMColor.agent)
                 .frame(width: 56, height: 56)
-                .background(PMColor.primary.opacity(0.13))
+                .background(PMColor.agent.opacity(0.12))
                 .clipShape(Circle())
             Text(title)
                 .font(.system(size: 17, weight: .semibold))
@@ -423,7 +478,7 @@ struct EmptyStateView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(24)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 }
 
@@ -442,13 +497,13 @@ struct ToastBanner: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(PMColor.surfaceRaised)
+        .background(PMColor.parchment)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(PMColor.hairline, lineWidth: 1)
         }
-        .shadow(color: .black.opacity(0.08), radius: 12, x: 0, y: 6)
+        .shadow(color: PMColor.agent.opacity(0.14), radius: 18, x: 0, y: 8)
         .padding(.horizontal, 16)
     }
 }

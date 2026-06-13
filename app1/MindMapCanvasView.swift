@@ -44,12 +44,20 @@ struct MindMapCanvasView: View {
                 }
             }
             .contentShape(Rectangle())
-            .background(PMColor.surfaceRaised)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .background(PMColor.parchment)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(PMColor.hairline, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.78), PMColor.hairline, PMColor.agent.opacity(0.18)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             }
+            .shadow(color: PMColor.agent.opacity(0.1), radius: 20, x: 0, y: 10)
             .simultaneousGesture(dragGesture)
             .simultaneousGesture(magnificationGesture)
             .animation(.spring(response: 0.35, dampingFraction: 0.86), value: viewModel.visibleNodes.count)
@@ -88,9 +96,15 @@ struct MindMapCanvasView: View {
 
     private func drawBackground(in context: inout GraphicsContext, size: CGSize) {
         let rect = CGRect(origin: .zero, size: size)
-        context.fill(Path(rect), with: .color(PMColor.surfaceRaised))
+        context.fill(Path(rect), with: .color(PMColor.parchment))
 
-        let gridColor = PMColor.hairline.opacity(0.2)
+        let glowRect = CGRect(x: -90, y: -120, width: size.width * 0.75, height: size.height * 0.55)
+        context.fill(Path(ellipseIn: glowRect), with: .color(PMColor.agent.opacity(0.08)))
+
+        let blueGlow = CGRect(x: size.width * 0.55, y: size.height * 0.45, width: size.width * 0.62, height: size.height * 0.45)
+        context.fill(Path(ellipseIn: blueGlow), with: .color(PMColor.primary.opacity(0.055)))
+
+        let gridColor = PMColor.hairline.opacity(0.26)
         let step: CGFloat = 42
         var x = viewModel.offset.width.truncatingRemainder(dividingBy: step)
         while x < size.width {
@@ -275,11 +289,19 @@ private struct MindMapNodeButton: View {
         .accessibilityLabel(node.title)
     }
 
-    private var background: Color {
+    @ViewBuilder
+    private var background: some View {
         if isSelected {
-            return PMColor.primary
+            LinearGradient(
+                colors: [PMColor.primary, PMColor.agent],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else if isFocusedBranch {
+            PMColor.parchment.opacity(0.98)
+        } else {
+            PMColor.surface.opacity(0.86)
         }
-        return isFocusedBranch ? PMColor.canvas.opacity(0.96) : PMColor.surface.opacity(0.88)
     }
 
     private var borderColor: Color {
@@ -300,8 +322,8 @@ private struct MindMapNodeButton: View {
 
     private var shadowColor: Color {
         if isSelected {
-            return PMColor.primary.opacity(0.28)
+            return PMColor.agent.opacity(0.28)
         }
-        return .black.opacity(isFocusedBranch ? 0.08 : 0.03)
+        return PMColor.agent.opacity(isFocusedBranch ? 0.12 : 0.04)
     }
 }

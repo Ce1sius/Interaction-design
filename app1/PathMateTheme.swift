@@ -7,25 +7,30 @@ import AppKit
 #endif
 
 enum PMColor {
-    static let canvas = Color(light: "#ffffff", dark: "#050506")
-    static let softCanvas = Color(light: "#fafaf9", dark: "#000000")
-    static let surface = Color(light: "#f6f5f4", dark: "#1c1c1e")
-    static let surfaceRaised = Color(light: "#ffffff", dark: "#242426")
-    static let hairline = Color(light: "#e5e3df", dark: "#343438")
-    static let strongHairline = Color(light: "#c8c4be", dark: "#4a4a50")
-    static let ink = Color(light: "#1a1a1a", dark: "#f7f7f8")
-    static let charcoal = Color(light: "#37352f", dark: "#f1f1f3")
-    static let slate = Color(light: "#5d5b54", dark: "#c7c7cc")
-    static let steel = Color(light: "#787671", dark: "#9b9ba1")
-    static let muted = Color(light: "#bbb8b1", dark: "#6c6c72")
-    static let primary = Color(hex: "#2488ff")
-    static let primaryPressed = Color(hex: "#0b66d8")
-    static let linkBlue = Color(hex: "#2488ff")
+    static let canvas = Color(light: "#F8FAFC", dark: "#020617")
+    static let softCanvas = Color(light: "#EFF4F8", dark: "#050A18")
+    static let surface = Color(light: "#E8EEF5", dark: "#0F172A")
+    static let surfaceRaised = Color(light: "#FFFFFF", dark: "#111827")
+    static let hairline = Color(light: "#D8E0EA", dark: "#1E293B")
+    static let strongHairline = Color(light: "#B8C4D2", dark: "#334155")
+    static let ink = Color(light: "#111827", dark: "#F8FAFC")
+    static let charcoal = Color(light: "#1F2937", dark: "#E5EDF6")
+    static let slate = Color(light: "#536170", dark: "#CBD5E1")
+    static let steel = Color(light: "#7B8794", dark: "#94A3B8")
+    static let muted = Color(light: "#A9B6C6", dark: "#64748B")
+    static let primary = Color(hex: "#2563EB")
+    static let primaryPressed = Color(hex: "#1D4ED8")
+    static let linkBlue = Color(hex: "#2563EB")
+    static let studyIndigo = Color(hex: "#5E6AD2")
+    static let studyIndigoPressed = Color(hex: "#4651B8")
+    static let agent = Color(hex: "#0EA5E9")
+    static let agentPressed = Color(hex: "#0284C7")
+    static let parchment = Color(light: "#FBFDFF", dark: "#111827")
     static let course = Color(hex: "#ff453a")
     static let assignment = Color(hex: "#ffcc00")
-    static let review = Color(hex: "#8ee84f")
-    static let personal = Color(hex: "#2488ff")
-    static let goal = Color(hex: "#32d6d3")
+    static let review = Color(hex: "#22C55E")
+    static let personal = Color(hex: "#2563EB")
+    static let goal = Color(hex: "#06B6D4")
     static let conflict = Color(hex: "#ff453a")
     static let warning = Color(hex: "#ff9f0a")
     static let success = Color(hex: "#30d158")
@@ -152,6 +157,52 @@ extension View {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                     .stroke(PMColor.hairline, lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.06), radius: 10, x: 0, y: 3)
+            .shadow(color: Color(light: "#0F172A", dark: "#000000").opacity(0.08), radius: 16, x: 0, y: 8)
+    }
+
+    func pathPremiumCard(cornerRadius: CGFloat = 16) -> some View {
+        self
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(PMColor.parchment)
+                    .overlay(alignment: .topLeading) {
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.72), PMColor.primary.opacity(0.06), PMColor.agent.opacity(0.04)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                    }
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.82), PMColor.hairline, PMColor.agent.opacity(0.18)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
+            }
+            .shadow(color: Color(light: "#0F172A", dark: "#000000").opacity(0.09), radius: 22, x: 0, y: 12)
+    }
+
+    func pathPageBackground() -> some View {
+        self.background(
+            ZStack {
+                PMColor.softCanvas.ignoresSafeArea()
+                LinearGradient(
+                    colors: [
+                        PMColor.agent.opacity(0.12),
+                        PMColor.canvas.opacity(0.96),
+                        PMColor.primary.opacity(0.06)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .ignoresSafeArea()
+            }
+        )
     }
 }

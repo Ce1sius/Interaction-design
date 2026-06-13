@@ -462,12 +462,21 @@ struct LaunchPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Spacer()
-            Image(systemName: "sparkles")
-                .font(.system(size: 34, weight: .semibold))
-                .foregroundStyle(PMColor.primary)
-                .frame(width: 72, height: 72)
-                .background(PMColor.primary.opacity(0.13))
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            ZStack {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [PMColor.agent, PMColor.primary],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                Image(systemName: "sparkles")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
+            .frame(width: 76, height: 76)
+            .shadow(color: PMColor.agent.opacity(0.24), radius: 22, x: 0, y: 12)
             Text("PathMate")
                 .font(.system(size: 42, weight: .bold))
                 .foregroundStyle(PMColor.ink)
@@ -479,6 +488,7 @@ struct LaunchPage: View {
             PathButton(title: "开始设置", systemImage: "arrow.right.circle.fill", action: onStart)
         }
         .padding(28)
+        .pathPageBackground()
     }
 }
 
@@ -507,7 +517,7 @@ struct NextUpView: View {
                 }
                 .padding(16)
             }
-            .background(PMColor.softCanvas)
+            .pathPageBackground()
             .navigationTitle("接下来")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -531,20 +541,37 @@ struct NextUpView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("最近安排")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(PMColor.ink)
-            Text("\(store.profile.school) · \(store.profile.goal.strategyTitle)")
-                .font(.system(size: 14))
-                .foregroundStyle(PMColor.slate)
-            Text(currentTerm.displayName)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(PMColor.primary)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [PMColor.agent.opacity(0.95), PMColor.primary.opacity(0.86)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: "clock.badge.checkmark.fill")
+                        .font(.system(size: 22, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 54, height: 54)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("最近安排")
+                        .font(.system(size: 29, weight: .semibold))
+                        .foregroundStyle(PMColor.ink)
+                    Text("\(store.profile.school) · \(store.profile.goal.strategyTitle)")
+                        .font(.system(size: 14))
+                        .foregroundStyle(PMColor.slate)
+                }
+                Spacer()
+            }
+            TagChip(title: currentTerm.displayName, systemImage: "calendar.badge.clock", tint: PMColor.agent)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .pathCardStyle()
+        .padding(18)
+        .pathPremiumCard(cornerRadius: 18)
     }
 
     private var focusSection: some View {
@@ -671,7 +698,7 @@ struct NextUpView: View {
                 .foregroundStyle(PMColor.slate)
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     @ViewBuilder
@@ -716,7 +743,7 @@ struct ScheduleView: View {
                 }
                 .padding(16)
             }
-            .background(PMColor.softCanvas)
+            .pathPageBackground()
             .navigationTitle("日程")
             .onAppear {
                 syncSelectedTerm(for: selectedDate)
@@ -797,7 +824,7 @@ struct ScheduleView: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard(cornerRadius: 18)
     }
 
     private var termMenu: some View {
@@ -910,7 +937,7 @@ struct TaskHubView: View {
                 }
                 .padding(16)
             }
-            .background(PMColor.softCanvas)
+            .pathPageBackground()
             .navigationTitle("任务")
             .sheet(item: $editingTask) { task in
                 TaskEditorSheet(store: store, task: task)
@@ -929,7 +956,7 @@ struct TaskHubView: View {
                 .foregroundStyle(PMColor.slate)
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private var suggestionsSection: some View {
@@ -1079,7 +1106,7 @@ struct AcademicsView: View {
                 }
                 .padding(16)
             }
-            .background(PMColor.softCanvas)
+            .pathPageBackground()
             .navigationTitle("学业")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
@@ -1143,25 +1170,40 @@ struct AcademicsView: View {
     }
 
     private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("课程与辅学")
-                .font(.system(size: 28, weight: .semibold))
-                .foregroundStyle(PMColor.ink)
-            Text("课程详情里可以查看课件、作业、重点知识点和辅学解释。")
-                .font(.system(size: 14))
-                .foregroundStyle(PMColor.slate)
-            Button {
-                showingImportCenter = true
-            } label: {
-                Label("导入课程表", systemImage: "square.and.arrow.down")
-                    .font(.system(size: 14, weight: .semibold))
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [PMColor.agent.opacity(0.95), PMColor.primary.opacity(0.82)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: "graduationcap.fill")
+                        .font(.system(size: 24, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 58, height: 58)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("课程与辅学")
+                        .font(.system(size: 29, weight: .semibold))
+                        .foregroundStyle(PMColor.ink)
+                    Text("从真实课件进入动态思维导图，沿着知识点完成例题、易错题和跟练。")
+                        .font(.system(size: 14))
+                        .foregroundStyle(PMColor.slate)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
-            .buttonStyle(.bordered)
-            .tint(PMColor.primary)
+            PathButton(title: "导入课程表", systemImage: "square.and.arrow.down") {
+                showingImportCenter = true
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .pathCardStyle()
+        .padding(18)
+        .pathPremiumCard(cornerRadius: 18)
     }
 }
 
@@ -1192,7 +1234,7 @@ struct CourseImportSheet: View {
                 }
                 .padding(16)
             }
-            .background(PMColor.softCanvas)
+            .pathPageBackground()
             .navigationTitle("导入课程表")
             .navigationDestination(isPresented: $showingSchoolSelection) {
                 AcademicSystemSchoolSelectionView(store: store, selectedTerm: selectedTerm, onImported: onImported)
@@ -1223,7 +1265,7 @@ struct CourseImportSheet: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private var termSelectionCard: some View {
@@ -1243,7 +1285,7 @@ struct CourseImportSheet: View {
             .tint(PMColor.primary)
         }
         .padding(14)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private var academicSystemCard: some View {
@@ -1705,7 +1747,7 @@ struct SettingsView: View {
                 }
                 .padding(16)
             }
-            .background(PMColor.softCanvas)
+            .pathPageBackground()
             .navigationTitle("设置")
             .toast($toast)
         }
@@ -1723,7 +1765,7 @@ struct SettingsView: View {
             InfoBox(title: "目标是常驻信息", message: "目标会影响任务优先级。需要调整时请在下方设置区修改。", icon: "lock.fill")
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private var appearanceCard: some View {
@@ -1741,7 +1783,7 @@ struct SettingsView: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private var preferencesCard: some View {
@@ -1779,7 +1821,7 @@ struct SettingsView: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private var dataCard: some View {
@@ -1802,7 +1844,7 @@ struct SettingsView: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     #if DEBUG
@@ -1880,7 +1922,7 @@ struct CourseDetailView: View {
                     }
                     .padding(16)
                 }
-                .background(PMColor.softCanvas)
+                .pathPageBackground()
                 .navigationTitle(course.name)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
@@ -1974,7 +2016,7 @@ struct CourseDetailView: View {
                 .foregroundStyle(PMColor.slate)
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private var trimmedNewTag: String {
@@ -2021,7 +2063,7 @@ struct CourseDetailView: View {
             .foregroundStyle(PMColor.primary)
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private func homeworkCard(_ course: Course) -> some View {
@@ -2064,7 +2106,7 @@ struct CourseDetailView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private func knowledgeCard(_ course: Course) -> some View {
@@ -2095,7 +2137,7 @@ struct CourseDetailView: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private func reviewCard(_ course: Course) -> some View {
@@ -2115,7 +2157,7 @@ struct CourseDetailView: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 }
 
@@ -2181,12 +2223,12 @@ struct CourseMaterialsView: View {
                                 .font(.system(size: 13, weight: .semibold))
                             }
                             .padding(16)
-                            .pathCardStyle()
+                            .pathPremiumCard()
                         }
                     }
                     .padding(16)
                 }
-                .background(PMColor.softCanvas)
+                .pathPageBackground()
                 .navigationTitle("课件")
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
@@ -2252,7 +2294,7 @@ struct CourseMaterialsView: View {
             }
         }
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private func learningLoginPanel(_ course: Course) -> some View {
@@ -2509,7 +2551,7 @@ struct NonCourseDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 }
 

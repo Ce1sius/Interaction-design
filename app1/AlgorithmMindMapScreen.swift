@@ -60,7 +60,7 @@ struct AlgorithmMindMapScreen: View {
                     .zIndex(10)
             }
         }
-        .background(PMColor.softCanvas.ignoresSafeArea())
+        .pathPageBackground()
         .navigationTitle(course == nil ? "图谱" : "\(course?.name ?? "")辅学")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -109,8 +109,24 @@ struct AlgorithmMindMapScreen: View {
                 .foregroundStyle(PMColor.ink)
 
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color(light: "#3d302f", dark: "#211b1b"))
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color(light: "#172033", dark: "#020617"),
+                                Color(light: "#1E3A8A", dark: "#0F172A")
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .overlay(alignment: .topLeading) {
+                        Circle()
+                            .fill(PMColor.agent.opacity(0.24))
+                            .frame(width: 132, height: 132)
+                            .blur(radius: 28)
+                            .offset(x: -52, y: -70)
+                    }
                 resourceMediaContent
                     .foregroundStyle(.white.opacity(0.92))
                     .padding(12)
@@ -118,9 +134,14 @@ struct AlgorithmMindMapScreen: View {
             .frame(height: resourceWindowHeight)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color(light: "#dedede", dark: "#1e1e20"))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .padding(14)
+        .background(PMColor.parchment)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(PMColor.hairline, lineWidth: 1)
+        }
+        .shadow(color: PMColor.agent.opacity(0.12), radius: 18, x: 0, y: 10)
     }
 
     private var collapsedResourceHeader: some View {
@@ -146,7 +167,7 @@ struct AlgorithmMindMapScreen: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
-        .background(PMColor.surfaceRaised)
+        .background(PMColor.parchment)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -304,7 +325,7 @@ struct AlgorithmMindMapScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
-        .background(PMColor.surfaceRaised)
+        .background(PMColor.parchment)
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
@@ -433,7 +454,11 @@ struct AlgorithmMindMapScreen: View {
         }
         .padding(8)
         .frame(width: 142, height: 82, alignment: .leading)
-        .background(.white.opacity(0.13))
+        .background(.white.opacity(0.14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(.white.opacity(0.18), lineWidth: 1)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 

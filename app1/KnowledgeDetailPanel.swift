@@ -280,7 +280,7 @@ struct KnowledgeDetailPanel: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .pathCardStyle()
+        .pathPremiumCard()
     }
 
     private func bulletList(title: String?, items: [String], tint: Color = PMColor.primary) -> some View {
@@ -445,7 +445,7 @@ struct PracticeResourceDetailPage: View {
                 }
                 .padding(16)
             }
-            .background(PMColor.softCanvas)
+            .pathPageBackground()
             .navigationTitle(resource.category)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -469,7 +469,11 @@ struct PracticeResourceDetailPage: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
-        .background(PMColor.surface)
+        .background(PMColor.parchment)
+        .overlay {
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(PMColor.hairline, lineWidth: 1)
+        }
         .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
     }
 }
@@ -490,7 +494,13 @@ private struct DetailTag: View {
         .foregroundStyle(tint)
         .padding(.horizontal, 9)
         .padding(.vertical, 6)
-        .background(tint.opacity(0.11))
+        .background(
+            Capsule()
+                .fill(tint.opacity(0.11))
+                .overlay {
+                    Capsule().stroke(tint.opacity(0.18), lineWidth: 1)
+                }
+        )
         .clipShape(Capsule())
     }
 }
@@ -511,7 +521,11 @@ private struct LearningRecordButton: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 10)
                 .foregroundStyle(isOn ? .white : PMColor.charcoal)
-                .background(isOn ? PMColor.primary : PMColor.surface)
+                .background(isOn ? PMColor.agent : PMColor.parchment)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(isOn ? PMColor.agentPressed.opacity(0.24) : PMColor.hairline, lineWidth: 1)
+                }
                 .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
         .buttonStyle(.plain)
